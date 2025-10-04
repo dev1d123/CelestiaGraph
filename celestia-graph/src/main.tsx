@@ -5,7 +5,7 @@ import AppRouter from './router/AppRouter';
 
 // Montaje principal
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+  <>
     <AppRouter />
-  </StrictMode>,
+  </>
 );

@@ -54,9 +54,10 @@ const GraphPage: React.FC = () => {
 						height: '480px',
 						width: '100%',
 						overflow: 'hidden',
-						zIndex: 0
-					}}>
-							<Node showAxes background="#060b14" autoRotate />
+						zIndex: 10  // aumentado
+						}}>
+						{/* Node ahora ocupa 100% del alto (480px) */}
+						<Node showAxes background="#060b14" autoRotate />
 					</div>
 				</section>
 			</main>
