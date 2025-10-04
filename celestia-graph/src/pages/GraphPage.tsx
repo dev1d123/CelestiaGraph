@@ -1,6 +1,8 @@
 import React from 'react';
 import GraphNavBar from '../components/GraphNavBar';
 import Node from '../three/Node';
+import Galaxy from '../three/Galaxy';
+
 const GraphPage: React.FC = () => {
 	return (
 			<>
@@ -58,6 +60,18 @@ const GraphPage: React.FC = () => {
 						}}>
 						{/* Node ahora ocupa 100% del alto (480px) */}
 						<Node showAxes background="#060b14" autoRotate />
+					</div>
+                    <div style={{
+						borderTop: '1px solid #ffffff10',
+						position: 'relative',
+						padding: 0,
+						height: '480px',
+						width: '100%',
+						overflow: 'hidden',
+						zIndex: 10  // aumentado
+						}}>
+						{/* Node ahora ocupa 100% del alto (480px) */}
+						<Galaxy showAxes background="#060b14" autoRotate />
 					</div>
 				</section>
 			</main>
