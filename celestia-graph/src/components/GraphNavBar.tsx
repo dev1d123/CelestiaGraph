@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useCart } from '../context/CartContext'; // nuevo
 import { useNavigate } from 'react-router-dom'; // nuevo
+import { dummyArticles } from '../data/dummyArticles'; // nuevo
 
 const injectGraphNavStyles = () => {
 	if (document.getElementById('graph-nav-styles')) return;
@@ -400,6 +401,262 @@ const GraphNavBar: React.FC = () => {
 		{ id: 3, title: 'Índice sincronizado', ts: 'hace 1h', unread: false, type: 'SYS' }
 	]));
 
+	const [results, setResults] = useState<any[]>([]); // nuevo
+	const [showResults, setShowResults] = useState(false); // nuevo
+	const [searchLoading, setSearchLoading] = useState(false); // nuevo
+	const resultsRef = useRef<HTMLDivElement | null>(null); // nuevo
+
+	// inyectar estilos extra para resultados
+	useEffect(() => {
+		const id = 'graph-nav-results-styles';
+		if (document.getElementById(id)) return;
+		const st = document.createElement('style');
+		st.id = id;
+		st.textContent = `
+		.gs-results-wrapper {
+			position: relative;
+			z-index: 90;
+		}
+		.gs-results-panel {
+			position: absolute;
+			left: 0;
+			top: 100%;
+			margin-top: .4rem;
+			width: min(1120px, calc(100vw - 2rem));
+			background: linear-gradient(150deg,#0d1827,#101e32 55%,#0a1522);
+			border: 1px solid #203446;
+			border-radius: 1rem;
+			box-shadow: 0 18px 50px -20px #000, 0 0 0 1px #ffffff0f;
+			padding: 1rem 1.1rem 1.2rem;
+			backdrop-filter: blur(14px) saturate(160%);
+			-webkit-backdrop-filter: blur(14px) saturate(160%);
+			max-height: 70vh;
+			overflow-y: auto;
+			display: flex;
+			flex-direction: column;
+			gap: .9rem;
+			animation: fadeIn .35s ease;
+		}
+		.gs-result {
+			display: flex;
+			flex-direction: column;
+			gap: .35rem;
+			padding: .55rem .7rem .7rem;
+			border: 1px solid #1d3246;
+			border-radius: .75rem;
+			background: linear-gradient(120deg,#132534,#0f1d2b);
+			font-size: .63rem;
+			line-height: 1.45;
+			position: relative;
+			transition: border-color .25s, background .25s;
+		}
+		.gs-result:hover {
+			border-color: #2b4e72;
+			background: linear-gradient(120deg,#163042,#102231);
+		}
+		.gs-title {
+			font-size: .74rem;
+			font-weight: 600;
+			letter-spacing: .4px;
+			color: #cfe6ff;
+			text-decoration: none;
+			line-height: 1.25;
+		}
+		.gs-title:hover { color: #ffffff; }
+		.gs-authors {
+			opacity: .75;
+			font-size: .58rem;
+			letter-spacing: .35px;
+		}
+		.gs-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: .45rem;
+			font-size: .52rem;
+			opacity: .7;
+			letter-spacing: .5px;
+		}
+		.gs-badge {
+			background: #173049;
+			border: 1px solid #254861;
+			color: #8fb6ff;
+			padding: .25rem .5rem;
+			border-radius: .6rem;
+			font-size: .52rem;
+			letter-spacing: .6px;
+			font-weight: 600;
+		}
+		.gs-cite {
+			color: #ffcf7b;
+			font-weight: 600;
+		}
+		.gs-abstract {
+			font-size: .56rem;
+			letter-spacing: .35px;
+			color: #b8d2ea;
+			max-width: 1000px;
+		}
+		.gs-highlight {
+			background: #ff3fb422;
+			color: #ffaad9;
+			padding: 0 .15rem;
+			border-radius: .25rem;
+		}
+		.gs-controls {
+			display:flex;
+			align-items:center;
+			justify-content:space-between;
+			gap:.8rem;
+			padding: .2rem .35rem .4rem;
+			border-bottom:1px solid #22374a;
+			margin-bottom: .4rem;
+		}
+		.gs-controls small {
+			font-size: .55rem;
+			color:#9ab9d3;
+			letter-spacing:.5px;
+		}
+		.gs-close-btn {
+			background:#172a3b;
+			color:#8fb6ff;
+			border:1px solid #28425a;
+			font-size:.55rem;
+			padding:.4rem .65rem;
+			border-radius:.55rem;
+			cursor:pointer;
+			font-weight:600;
+			letter-spacing:.5px;
+			transition:background .25s,color .25s;
+		}
+		.gs-close-btn:hover { background:#203d52; color:#d8ecff; }
+		.gs-empty {
+			text-align:center;
+			opacity:.5;
+			font-size:.6rem;
+			padding:1rem 0 .6rem;
+		}
+		@media (max-width: 920px){
+			.gs-results-panel { position: fixed; left:50%; transform:translateX(-50%); top: 74px; width: min(1000px,96vw); }
+		}
+		`;
+		document.head.appendChild(st);
+	}, []);
+
+	// helper highlight
+	const highlight = (text: string, terms: string[]) => {
+		if (!terms.length) return text;
+		let safe = text;
+		terms
+			.filter(t => t.trim().length > 1)
+			.forEach(t => {
+				const r = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');
+				safe = safe.replace(r, '<span class="gs-highlight">$1</span>');
+			});
+		return <span dangerouslySetInnerHTML={{ __html: safe }} />;
+	};
+
+	const tokenize = (v: string) =>
+		v.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+
+	const performSearch = (advParams?: typeof adv) => {
+		setSearchLoading(true);
+		const base = dummyArticles.slice();
+		const p = advParams || { ...adv, q: search };
+		const qTokens = tokenize(p.q.toLowerCase());
+		const excTokens = tokenize(p.exclude.toLowerCase());
+		const tagsTokens = tokenize(p.tags.toLowerCase());
+		const logicAnd = p.logic === 'AND';
+
+		let filtered = base.filter(a => {
+			const haystack = (a.title + ' ' + a.abstract + ' ' + a.tags.join(' ')).toLowerCase();
+
+			// q tokens
+			if (qTokens.length) {
+				const matchTokens = qTokens.map(t => haystack.includes(t));
+				if (logicAnd && matchTokens.some(m => !m)) return false;
+				if (!logicAnd && matchTokens.every(m => !m)) return false;
+			}
+
+			// exact phrase
+			if (p.exact.trim()) {
+				if (!haystack.includes(p.exact.toLowerCase())) return false;
+			}
+
+			// exclude
+			if (excTokens.some(t => t && haystack.includes(t))) return false;
+
+			// author
+			if (p.author.trim()) {
+				const auth = p.author.toLowerCase();
+				if (!a.authors.some(au => au.toLowerCase().includes(auth))) return false;
+			}
+
+			// tags
+			if (tagsTokens.length) {
+				const lowerTags = a.tags.map(t => t.toLowerCase());
+				const all = tagsTokens.every(tt => lowerTags.includes(tt));
+				if (!all) return false;
+			}
+
+			// height
+			if (p.minHeight && a.height < Number(p.minHeight)) return false;
+			if (p.maxHeight && a.height > Number(p.maxHeight)) return false;
+
+			// date range
+			if (p.dateFrom && a.date < p.dateFrom) return false;
+			if (p.dateTo && a.date > p.dateTo) return false;
+
+			return true;
+		});
+
+		// orden preferente: citas desc, año desc
+		filtered.sort((a, b) => b.citations - a.citations || b.year - a.year);
+
+		// limitar
+		const limit = parseInt(p.limit, 10) || 50;
+		filtered = filtered.slice(0, limit);
+
+		// map render meta/hits
+		const termsForHighlight = [...qTokens];
+		if (p.exact) termsForHighlight.push(p.exact);
+		const mapped = filtered.map(f => ({
+			...f,
+			_hTitle: highlight(f.title, termsForHighlight),
+			_hAbstract: highlight(f.abstract, termsForHighlight)
+		}));
+
+		setTimeout(() => {
+			setResults(mapped);
+			setShowResults(true);
+			setSearchLoading(false);
+		}, 250 + Math.random()*250); // delay simulado
+	};
+
+	// quick submit
+	const submitQuick = (e: React.FormEvent) => {
+		e.preventDefault();
+		performSearch();
+	};
+
+	// override advanced apply
+	const applyAdvanced = () => {
+		performSearch(adv);
+		setShowAdv(false);
+	};
+
+	// cerrar resultados al click fuera
+	useEffect(() => {
+		const onDoc = (e: MouseEvent) => {
+			if (!resultsRef.current) return;
+			if (!resultsRef.current.contains(e.target as Node) &&
+				!(e.target as HTMLElement).closest('.graph-nav-form')) {
+				// opcional: setShowResults(false);
+			}
+		};
+		document.addEventListener('mousedown', onDoc);
+		return () => document.removeEventListener('mousedown', onDoc);
+	}, []);
+
 	useEffect(() => {
 		injectGraphNavStyles();
 	}, []);
@@ -422,16 +679,6 @@ const GraphNavBar: React.FC = () => {
 			}, 10);
 		}
 	}, [showAdv]);
-
-	const submitQuick = (e: React.FormEvent) => {
-		e.preventDefault();
-		console.log('Quick search:', search);
-	};
-
-	const applyAdvanced = () => {
-		console.log('Advanced search params:', adv);
-		setShowAdv(false);
-	};
 
 	const updateAdv = (patch: Partial<AdvancedParams>) =>
 		setAdv(a => ({ ...a, ...patch }));
@@ -458,6 +705,7 @@ const GraphNavBar: React.FC = () => {
 						placeholder="Buscar en grafo..."
 						value={search}
 						onChange={e => setSearch(e.target.value)}
+						onKeyDown={e => { if (e.key === 'Escape') setShowResults(false); }}
 						aria-label="Buscar"
 					/>
 				</form>
@@ -529,6 +777,60 @@ const GraphNavBar: React.FC = () => {
 					>Inicio</a>
 				</div>
 			</header>
+
+			{/* Panel de resultados */}
+			{showResults && (
+				<div className="gs-results-wrapper" ref={resultsRef} style={{ position:'relative' }}>
+					<div className="gs-results-panel">
+						<div className="gs-controls">
+							<small>
+								{searchLoading
+									? 'Buscando...'
+									: results.length
+										? `${results.length} resultados (dummy)`
+										: 'Sin resultados'}
+							</small>
+							<div style={{display:'flex', gap:'.4rem'}}>
+								<button
+									className="gs-close-btn"
+									onClick={() => setShowResults(false)}
+								>Cerrar</button>
+								<button
+									className="gs-close-btn"
+									style={{background:'#1c3145'}}
+									onClick={() => {
+										setSearch('');
+										setResults([]);
+									}}
+								>Reset</button>
+							</div>
+						</div>
+						{!results.length && !searchLoading && (
+							<div className="gs-empty">Intenta ajustar términos o abrir la búsqueda avanzada.</div>
+						)}
+						{results.map(r => (
+							<article key={r.id} className="gs-result">
+								<a href="#" className="gs-title">{r._hTitle}</a>
+								<div className="gs-authors">
+									{r.authors.join(', ')} — {r.venue} ({r.year})
+								</div>
+								<div className="gs-meta">
+									<span className="gs-badge gs-cite">Citas: {r.citations}</span>
+									<span className="gs-badge">Altura {r.height}</span>
+									<span className="gs-badge">Fecha {r.date}</span>
+									{r.tags.slice(0,4).map(t => <span key={t} className="gs-badge">{t}</span>)}
+								</div>
+								<div className="gs-abstract">
+									{r._hAbstract}{' '}
+									<span style={{opacity:.45}}>
+										{adv.includeMeta ? ` [meta:${r.id}]` : ''}
+									</span>
+								</div>
+							</article>
+						))}
+					</div>
+				</div>
+			)}
 
 			{/* Modal de búsqueda avanzada */}
 			{showAdv && (
