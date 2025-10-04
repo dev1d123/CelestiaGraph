@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as dat from 'dat.gui';
 
 interface UniverseProps {
 	autoRotate?: boolean;
@@ -88,6 +89,27 @@ const galaxyConfigs: GalaxyConfig[] = [
 		size: 0.0105,
 	},
 ];
+
+interface SunParams {
+	sunSize: number;
+	glowIntensity: number;
+	orbitSpeed: number;
+	rotationSpeed: number;
+	coreColor: number;
+	glowColor: number;
+}
+
+const sunParams: SunParams = {
+	sunSize: 0.18, // antes 0.35
+	glowIntensity: 1.45, // reducido (antes 2.2)
+	orbitSpeed: 0.4,
+	rotationSpeed: 0.8,
+	coreColor: 0xffd277,
+	glowColor: 0xffaa33,
+};
+
+let sunGUI: dat.GUI | null = null;
+let sunFolderAdded = false;
 
 const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'transparent' }) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -246,6 +268,105 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 
 		galaxyConfigs.forEach(cfg => createGalaxy(cfg));
 
+		type SunRuntime = {
+			group: THREE.Group;
+			core: THREE.Mesh;
+			glow: THREE.Mesh;
+			angle: number;
+			orbitRadius: number;
+			orbitSpeed: number;
+			galaxyCenter: THREE.Vector3;
+			tooltip: HTMLDivElement;
+		};
+
+		const suns: SunRuntime[] = [];
+		let hoveredSun: SunRuntime | null = null;
+		let paused = false;
+		let hoverRing: THREE.Mesh | null = null; // anillo decorativo
+
+		const sunLayer = document.createElement('div');
+		Object.assign(sunLayer.style, {
+			position: 'absolute',
+			inset: '0',
+			pointerEvents: 'none',
+			zIndex: '25',
+			fontFamily: 'inherit'
+		});
+		labelLayer.appendChild(sunLayer);
+
+		const sunTooltipStyle = (): Partial<CSSStyleDeclaration> => ({
+			position: 'absolute',
+			transform: 'translate(-50%, -50%)',
+			// estilos visuales movidos a clase .three-sun-tooltip
+		});
+
+		const createSunMesh = () => {
+			const coreGeo = new THREE.SphereGeometry(sunParams.sunSize, 28, 28);
+			const coreMat = new THREE.MeshStandardMaterial({
+				color: sunParams.coreColor,
+				emissive: sunParams.coreColor,
+				emissiveIntensity: 1.1,
+				roughness: 0.3,
+				metalness: 0.05
+			});
+			const core = new THREE.Mesh(coreGeo, coreMat);
+
+			const glowGeo = new THREE.SphereGeometry(sunParams.sunSize * sunParams.glowIntensity, 28, 28);
+			const glowMat = new THREE.MeshBasicMaterial({
+				color: sunParams.glowColor,
+				transparent: true,
+				opacity: 0.18,
+				blending: THREE.AdditiveBlending,
+				depthWrite: false
+			});
+			const glow = new THREE.Mesh(glowGeo, glowMat);
+			return { core, glow };
+		};
+
+		const createSunsForGalaxy = (g: GalaxyRuntime) => {
+			const count = Math.floor(Math.random() * 8) + 3; // 3-10
+			for (let i = 0; i < count; i++) {
+				const { core, glow } = createSunMesh();
+				const group = new THREE.Group();
+				group.add(core);
+				group.add(glow);
+
+				// Nuevo: órbita estrictamente dentro del radio de la galaxia
+				const orbitRadius = g.radius * (0.15 + Math.random() * 0.75); // entre 15% y 90% del radio
+				const angle = Math.random() * Math.PI * 2;
+				group.position.set(
+					g.center.x + Math.cos(angle) * orbitRadius,
+					g.center.y + (Math.random() * 0.3 - 0.15) * (g.radius * 0.25),
+					g.center.z + Math.sin(angle) * orbitRadius
+				);
+
+				scene.add(group);
+
+				const tooltip = document.createElement('div');
+				tooltip.className = 'three-sun-tooltip';
+				Object.assign(tooltip.style, sunTooltipStyle());
+				tooltip.innerHTML = `
+					<strong>${g.labelDiv.textContent || 'SUN'}</strong><br/>
+					<span class="meta">Sol #${i + 1}</span><br/>
+					<span class="dim">Orbit: ${orbitRadius.toFixed(2)}</span>
+				`;
+				sunLayer.appendChild(tooltip);
+
+				suns.push({
+					group,
+					core,
+					glow,
+					angle,
+					orbitRadius,
+					orbitSpeed: sunParams.orbitSpeed * (0.4 + Math.random() * 0.9),
+					galaxyCenter: g.center.clone(),
+					tooltip
+				});
+			}
+		};
+
+		galaxies.forEach(g => createSunsForGalaxy(g));
+
 		// Animación de enfoque de cámara
 		let camAnimActive = false;
 		let camFrom = new THREE.Vector3();
@@ -301,6 +422,65 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		};
 		canvas.addEventListener('pointerdown', handleClick);
 
+		const handlePointerMove = (evt: PointerEvent) => {
+			const rect = canvas.getBoundingClientRect();
+			pointer.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+			pointer.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+			raycaster.setFromCamera(pointer, camera);
+
+			const sunCores = suns.map(s => s.core);
+			const intersects = raycaster.intersectObjects(sunCores, false);
+
+			if (intersects.length) {
+				const obj = intersects[0].object as THREE.Mesh;
+				const sun = suns.find(s => s.core === obj);
+				if (sun) {
+					if (hoveredSun !== sun) {
+						if (hoveredSun) {
+							hoveredSun.tooltip.style.opacity = '0';
+							hoveredSun.tooltip.classList.remove('active');
+							hoveredSun.tooltip.style.transform = 'translate(-50%, -50%) scale(1)';
+						}
+						hoveredSun = sun;
+						paused = true;
+						sun.tooltip.style.opacity = '1';
+						sun.tooltip.classList.add('active');
+						sun.tooltip.style.transform = 'translate(-50%, -50%) scale(1.1)';
+						// crear anillo si no existe
+						if (!hoverRing) {
+							const ringGeo = new THREE.RingGeometry(sunParams.sunSize * 1.6, sunParams.sunSize * 2.1, 64);
+							const ringMat = new THREE.MeshBasicMaterial({
+								color: 0xffd665,
+								transparent: true,
+								opacity: 0.55,
+								side: THREE.DoubleSide,
+								blending: THREE.AdditiveBlending,
+								depthWrite: false
+							});
+							hoverRing = new THREE.Mesh(ringGeo, ringMat);
+							scene.add(hoverRing);
+						}
+						hoverRing.position.copy(sun.group.position);
+					}
+				}
+			} else {
+				if (hoveredSun) {
+					hoveredSun.tooltip.style.opacity = '0';
+					hoveredSun.tooltip.classList.remove('active');
+					hoveredSun.tooltip.style.transform = 'translate(-50%, -50%) scale(1)';
+					hoveredSun = null;
+				}
+				if (hoverRing) {
+					scene.remove(hoverRing);
+					hoverRing.geometry.dispose();
+					(hoverRing.material as THREE.Material).dispose();
+					hoverRing = null;
+				}
+				paused = false;
+			}
+		};
+		canvas.addEventListener('pointermove', handlePointerMove);
+
 		const clock = new THREE.Clock();
 
 		const updateLabels = () => {
@@ -329,26 +509,68 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				}
 				g.labelDiv.style.transform = `translate(-50%, -50%) scale(${scale})`;
 				g.labelDiv.style.opacity = scale < 0.5 ? `${0.6 + (scale - 0.35)}` : '1';
+				for (const s of suns) {
+					const screenPos = s.group.position.clone().project(camera);
+					if (screenPos.z > 1) {
+						s.tooltip.style.display = 'none';
+						continue;
+					}
+					s.tooltip.style.display = 'block';
+					const x = (screenPos.x * 0.5 + 0.5) * width;
+					const y = (-screenPos.y * 0.5 + 0.5) * height;
+					s.tooltip.style.left = `${x}px`;
+					s.tooltip.style.top = `${y - 18}px`;
+					if (s !== hoveredSun && s.tooltip.style.opacity === '1') {
+						s.tooltip.style.opacity = '0';
+						s.tooltip.classList.remove('active');
+					}
+				}
 			}
 		};
 
 		const tick = () => {
 			const elapsed = clock.getElapsedTime();
-			if (autoRotate) {
-				galaxies.forEach((g, idx) => {
-					g.group.rotation.y += 0.0008 + idx * 0.00015;
-					g.group.rotation.x += 0.00015;
+			if (autoRotate && !paused) { // añadido !paused
+				// Rotación unificada (misma dirección/velocidad para todas)
+				const galaxyRotationSpeed = 0.0012;
+				galaxies.forEach(g => {
+					g.group.rotation.y += galaxyRotationSpeed;
 				});
 			}
 			// Animación de cámara
 			if (camAnimActive) {
 				camAnimT += 0.025;
 				const t = camAnimT >= 1 ? 1 : camAnimT;
-				// easeOutQuad
 				const eased = t * (2 - t);
 				camera.position.lerpVectors(camFrom, camTo, eased);
 				controls.target.lerpVectors(targetFrom, targetTo, eased);
 				if (t === 1) camAnimActive = false;
+			}
+			if (!paused && autoRotate) {
+				suns.forEach(s => {
+					s.angle += s.orbitSpeed * 0.002 * sunParams.orbitSpeed; // misma dirección (positivo)
+					s.group.position.set(
+						s.galaxyCenter.x + Math.cos(s.angle) * s.orbitRadius,
+						s.galaxyCenter.y + Math.sin(s.angle * 0.35) * 0.4,
+						s.galaxyCenter.z + Math.sin(s.angle) * s.orbitRadius
+					);
+					s.core.rotation.y += 0.01 * sunParams.rotationSpeed;
+					s.glow.rotation.y += 0.006 * sunParams.rotationSpeed;
+				});
+			}
+			// Efectos dinámicos de hover
+			if (hoveredSun) {
+				const t = performance.now() * 0.001;
+				if (hoverRing) {
+					const pulse = 1 + Math.sin(t * 4) * 0.12;
+					hoverRing.scale.setScalar(pulse);
+					(hoverRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + (Math.sin(t * 6) * 0.25 + 0.25);
+					hoverRing.lookAt(camera.position);
+				}
+				// pulso del glow
+				const glowMat = hoveredSun.glow.material as THREE.MeshBasicMaterial;
+				glowMat.opacity = 0.28 + (Math.sin(t * 5) * 0.1 + 0.1);
+				hoveredSun.core.rotation.y += 0.02;
 			}
 			controls.update();
 			updateLabels();
@@ -378,11 +600,55 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		};
 		window.addEventListener('resize', onWindowResize);
 
+		if (!sunGUI) {
+			sunGUI = new dat.GUI();
+			sunGUI.domElement.style.zIndex = '45';
+			sunGUI.domElement.style.position = 'fixed';
+			sunGUI.domElement.style.bottom = '8px';
+			sunGUI.domElement.style.left = '8px';
+		}
+		if (!sunFolderAdded) {
+			const sf = sunGUI.addFolder('suns');
+			sf.add(sunParams, 'sunSize').min(0.1).max(1).step(0.01).onFinishChange(() => {
+				suns.forEach(s => {
+					s.core.geometry.dispose();
+					s.glow.geometry.dispose();
+					const { core, glow } = createSunMesh();
+					s.group.remove(s.core, s.glow);
+					s.core = core;
+					s.glow = glow;
+					s.group.add(core, glow);
+				});
+			});
+			sf.add(sunParams, 'glowIntensity').min(1).max(3).step(0.05).onFinishChange(() => { // max ajustado (antes 4)
+				suns.forEach(s => {
+					s.glow.geometry.dispose();
+					s.glow.geometry = new THREE.SphereGeometry(sunParams.sunSize * sunParams.glowIntensity, 28, 28);
+				});
+			});
+			sf.add(sunParams, 'orbitSpeed').min(0).max(2).step(0.01);
+			sf.add(sunParams, 'rotationSpeed').min(0).max(3).step(0.05);
+			sf.addColor(sunParams, 'coreColor').onFinishChange(() => {
+				suns.forEach(s => {
+					(s.core.material as THREE.MeshStandardMaterial).color.set(sunParams.coreColor);
+					(s.core.material as THREE.MeshStandardMaterial).emissive.set(sunParams.coreColor);
+				});
+			});
+			sf.addColor(sunParams, 'glowColor').onFinishChange(() => {
+				suns.forEach(s => {
+					(s.glow.material as THREE.MeshBasicMaterial).color.set(sunParams.glowColor);
+				});
+			});
+			sf.open();
+			sunFolderAdded = true;
+		}
+
 		return () => {
 			if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
 			window.removeEventListener('resize', onWindowResize);
 			ro.disconnect();
 			canvas.removeEventListener('pointerdown', handleClick);
+			canvas.removeEventListener('pointermove', handlePointerMove);
 			galaxies.forEach(g => {
 				g.group.traverse(obj => {
 					if ((obj as THREE.Points).isPoints) {
@@ -394,12 +660,26 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				scene.remove(g.group);
 				if (g.labelDiv.parentNode) g.labelDiv.parentNode.removeChild(g.labelDiv);
 			});
+			suns.forEach(s => {
+				s.core.geometry.dispose();
+				(s.core.material as THREE.Material).dispose();
+				s.glow.geometry.dispose();
+				(s.glow.material as THREE.Material).dispose();
+				if (s.tooltip.parentNode) s.tooltip.parentNode.removeChild(s.tooltip);
+				scene.remove(s.group);
+			});
+			if (hoverRing) {
+				scene.remove(hoverRing);
+				hoverRing.geometry.dispose();
+				(hoverRing.material as THREE.Material).dispose();
+				hoverRing = null;
+			}
 			renderer.dispose();
 		};
 	}, [autoRotate, background]);
 
 	return (
-		<div ref={containerRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+		<div ref={containerRef} className="three-sun" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
 			<canvas
 				ref={canvasRef}
 				style={{
@@ -410,7 +690,8 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 					display: 'block',
 					zIndex: 5,
 					outline: 'none',
-					cursor: 'grab'
+					cursor: 'grab',
+					pointerEvents: 'auto' // override global
 				}}
 			/>
 			<div
