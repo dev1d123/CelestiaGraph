@@ -120,7 +120,9 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		const width = container.clientWidth || window.innerWidth;
 		const height = container.clientHeight || window.innerHeight;
 		const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 200);
-		camera.position.set(10, 8, 14);
+		// Vista cenital inicial
+		camera.position.set(0, 28, 0.01);
+		camera.lookAt(0, 0, 0);
 		scene.add(camera);
 		cameraRef.current = camera;
 
@@ -140,12 +142,16 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		controls.enableDamping = true;
 		controls.zoomSpeed = 0.7;
 		controls.rotateSpeed = 0.8;
+		// Limitar a vista superior (evita ir por debajo del plano)
+		controls.minPolarAngle = 0;
+		controls.maxPolarAngle = Math.PI / 2.05;
 		controlsRef.current = controls;
 
 		type GalaxyRuntime = {
 			group: THREE.Group;
 			center: THREE.Vector3;
 			labelDiv: HTMLDivElement;
+			radius: number;
 		};
 
 		const galaxies: GalaxyRuntime[] = [];
@@ -234,10 +240,66 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				group,
 				center: cfg.position.clone(),
 				labelDiv: div,
+				radius: cfg.radius
 			});
 		};
 
 		galaxyConfigs.forEach(cfg => createGalaxy(cfg));
+
+		// Animación de enfoque de cámara
+		let camAnimActive = false;
+		let camFrom = new THREE.Vector3();
+		let camTo = new THREE.Vector3();
+		let targetFrom = new THREE.Vector3();
+		let targetTo = new THREE.Vector3();
+		let camAnimT = 0;
+
+		const startCameraFocus = (center: THREE.Vector3, radius: number) => {
+			const fovRad = THREE.MathUtils.degToRad(camera.fov);
+			const radiusWithMargin = radius * 1.15;
+			const aspect = (renderer.domElement.clientWidth || width) / (renderer.domElement.clientHeight || height);
+			const neededDistHeight = radiusWithMargin / Math.tan(fovRad / 2);
+			const neededDistWidth = radiusWithMargin / (Math.tan(fovRad / 2) * aspect);
+			const neededDist = Math.max(neededDistHeight, neededDistWidth);
+			camFrom.copy(camera.position);
+			camTo.set(center.x, center.y + neededDist, center.z + 0.001); // leve offset z
+			targetFrom.copy(controls.target);
+			targetTo.copy(center);
+			camAnimT = 0;
+			camAnimActive = true;
+		};
+
+		// Picking
+		const raycaster = new THREE.Raycaster();
+		const pointer = new THREE.Vector2();
+		raycaster.params.Points = { threshold: 0.05 }; // hit box reducido
+
+		const handleClick = (evt: MouseEvent) => {
+			const rect = canvas.getBoundingClientRect();
+			pointer.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
+			pointer.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
+			raycaster.setFromCamera(pointer, camera);
+			// recolectar todos los Points
+			const pointObjects: THREE.Object3D[] = [];
+			galaxies.forEach(g => {
+				g.group.traverse(o => {
+					if ((o as THREE.Points).isPoints) pointObjects.push(o);
+				});
+			});
+			const intersects = raycaster.intersectObjects(pointObjects, false);
+			if (intersects.length) {
+				for (const inter of intersects) {
+					const pts = inter.object as THREE.Points;
+					const g = galaxies.find(gl => gl.group.children.includes(pts));
+					if (!g) continue;
+					// reducir área clicable: solo núcleo central
+					if (inter.point.distanceTo(g.center) > g.radius * 0.7) continue;
+					startCameraFocus(g.center, g.radius);
+					break;
+				}
+			}
+		};
+		canvas.addEventListener('pointerdown', handleClick);
 
 		const clock = new THREE.Clock();
 
@@ -257,6 +319,16 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				const y = (-screenPos.y * 0.5 + 0.5) * height;
 				g.labelDiv.style.left = `${x}px`;
 				g.labelDiv.style.top = `${y}px`;
+				// Escalado según distancia (más lejos -> más pequeño)
+				const dist = camera.position.distanceTo(g.center);
+				// base: a partir de 15 empieza a reducir
+				let scale = 1;
+				const threshold = 15;
+				if (dist > threshold) {
+					scale = Math.max(0.35, threshold / dist);
+				}
+				g.labelDiv.style.transform = `translate(-50%, -50%) scale(${scale})`;
+				g.labelDiv.style.opacity = scale < 0.5 ? `${0.6 + (scale - 0.35)}` : '1';
 			}
 		};
 
@@ -267,6 +339,16 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 					g.group.rotation.y += 0.0008 + idx * 0.00015;
 					g.group.rotation.x += 0.00015;
 				});
+			}
+			// Animación de cámara
+			if (camAnimActive) {
+				camAnimT += 0.025;
+				const t = camAnimT >= 1 ? 1 : camAnimT;
+				// easeOutQuad
+				const eased = t * (2 - t);
+				camera.position.lerpVectors(camFrom, camTo, eased);
+				controls.target.lerpVectors(targetFrom, targetTo, eased);
+				if (t === 1) camAnimActive = false;
 			}
 			controls.update();
 			updateLabels();
@@ -300,6 +382,7 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 			if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
 			window.removeEventListener('resize', onWindowResize);
 			ro.disconnect();
+			canvas.removeEventListener('pointerdown', handleClick);
 			galaxies.forEach(g => {
 				g.group.traverse(obj => {
 					if ((obj as THREE.Points).isPoints) {
