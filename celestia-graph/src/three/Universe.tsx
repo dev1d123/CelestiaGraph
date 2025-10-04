@@ -2,10 +2,12 @@ import React, { useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as dat from 'dat.gui';
+import { setCameraState, getCameraState } from '../state/cameraStore';
 
 interface UniverseProps {
 	autoRotate?: boolean;
 	background?: string;
+	onSunSelect?: (data: { galaxy: string; sunIndex: number }) => void;
 }
 
 interface GalaxyConfig {
@@ -111,7 +113,7 @@ const sunParams: SunParams = {
 let sunGUI: dat.GUI | null = null;
 let sunFolderAdded = false;
 
-const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'transparent' }) => {
+const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'transparent', onSunSelect }) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -168,6 +170,16 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		controls.minPolarAngle = 0;
 		controls.maxPolarAngle = Math.PI / 2.05;
 		controlsRef.current = controls;
+
+		// Restore previous camera state if exists
+		const saved = getCameraState();
+		if (saved) {
+			camera.position.set(...saved.position);
+			if (controls) {
+				controls.target.set(...saved.target);
+				controls.update();
+			}
+		}
 
 		type GalaxyRuntime = {
 			group: THREE.Group;
@@ -400,7 +412,29 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 			pointer.x = ((evt.clientX - rect.left) / rect.width) * 2 - 1;
 			pointer.y = -((evt.clientY - rect.top) / rect.height) * 2 + 1;
 			raycaster.setFromCamera(pointer, camera);
-			// recolectar todos los Points
+
+			// 1) Intentar seleccionar un sol
+			const sunCores = suns.map(s => s.core);
+			const sunHits = raycaster.intersectObjects(sunCores, false);
+			if (sunHits.length) {
+				const obj = sunHits[0].object as THREE.Mesh;
+				const sunIdx = suns.findIndex(s => s.core === obj);
+				if (sunIdx >= 0 && suns[sunIdx]) {
+					const gLabel = galaxies.find(g => g.center.distanceTo(suns[sunIdx].galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
+					if (hoverRing) {
+						scene.remove(hoverRing);
+						hoverRing.geometry.dispose();
+						(hoverRing.material as THREE.Material).dispose();
+						hoverRing = null;
+					}
+					if (typeof (onSunSelect) === 'function') {
+						onSunSelect({ galaxy: gLabel, sunIndex: sunIdx });
+					}
+					return;
+				}
+			}
+
+			// 2) Fallback: click galaxia (mantener comportamiento previo)
 			const pointObjects: THREE.Object3D[] = [];
 			galaxies.forEach(g => {
 				g.group.traverse(o => {
@@ -413,7 +447,6 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 					const pts = inter.object as THREE.Points;
 					const g = galaxies.find(gl => gl.group.children.includes(pts));
 					if (!g) continue;
-					// reducir área clicable: solo núcleo central
 					if (inter.point.distanceTo(g.center) > g.radius * 0.7) continue;
 					startCameraFocus(g.center, g.radius);
 					break;
@@ -547,15 +580,17 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				if (t === 1) camAnimActive = false;
 			}
 			if (!paused && autoRotate) {
+				// usar misma velocidad/dirección para la rotación propia de los soles
+				const galaxyRotationSpeed = 0.0012;
 				suns.forEach(s => {
-					s.angle += s.orbitSpeed * 0.002 * sunParams.orbitSpeed; // misma dirección (positivo)
+					s.angle += s.orbitSpeed * 0.002 * sunParams.orbitSpeed;
 					s.group.position.set(
 						s.galaxyCenter.x + Math.cos(s.angle) * s.orbitRadius,
 						s.galaxyCenter.y + Math.sin(s.angle * 0.35) * 0.4,
 						s.galaxyCenter.z + Math.sin(s.angle) * s.orbitRadius
 					);
-					s.core.rotation.y += 0.01 * sunParams.rotationSpeed;
-					s.glow.rotation.y += 0.006 * sunParams.rotationSpeed;
+					s.core.rotation.y += galaxyRotationSpeed;
+					s.glow.rotation.y += galaxyRotationSpeed;
 				});
 			}
 			// Efectos dinámicos de hover
@@ -570,7 +605,7 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				// pulso del glow
 				const glowMat = hoveredSun.glow.material as THREE.MeshBasicMaterial;
 				glowMat.opacity = 0.28 + (Math.sin(t * 5) * 0.1 + 0.1);
-				hoveredSun.core.rotation.y += 0.02;
+				hoveredSun.core.rotation.y += 0.0012; // misma velocidad que galaxia
 			}
 			controls.update();
 			updateLabels();
@@ -675,8 +710,19 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				hoverRing = null;
 			}
 			renderer.dispose();
+			if (controls) {
+				setCameraState({
+					position: [camera.position.x, camera.position.y, camera.position.z],
+					target: [controls.target.x, controls.target.y, controls.target.z]
+				});
+			} else {
+				setCameraState({
+					position: [camera.position.x, camera.position.y, camera.position.z],
+					target: [0, 0, 0]
+				});
+			}
 		};
-	}, [autoRotate, background]);
+	}, [autoRotate, background, onSunSelect]);
 
 	return (
 		<div ref={containerRef} className="three-sun" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>

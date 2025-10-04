@@ -94,3 +94,43 @@
 }
 
 .three-sun:not(.active) .three-sun-tooltip {}
+
+/* === Transitions (inline, antes en transition.css) === */
+.space-wrapper.jump-out {
+	animation: universeExit .65s ease forwards;
+}
+
+@keyframes universeExit {
+	0% { filter: brightness(1) blur(0px); transform: scale(1); opacity: 1; }
+	40% { filter: brightness(1.25) blur(1px); transform: scale(1.03); }
+	70% { filter: brightness(.55) blur(2px); transform: scale(.97); }
+	100% { filter: brightness(.3) blur(6px); transform: scale(.85); opacity: 0; }
+}
+
+@keyframes pulseFade {
+	0% { opacity: 0; transform: scale(.85); }
+	25% { opacity: 1; transform: scale(1); }
+	55% { opacity: .95; transform: scale(1.08); }
+	85% { opacity: .35; transform: scale(1.25); }
+	100% { opacity: 0; transform: scale(1.4); }
+}
+
+.transition-fade-in {
+	animation: fadeInSoft .6s ease both;
+}
+
+@keyframes fadeInSoft {
+	from { opacity: 0; transform: translateY(8px); filter: blur(3px); }
+	to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.transition-overlay {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+
+.fade-mask {
+	background: radial-gradient(circle at 50% 50%, rgba(255,170,60,.18), transparent 70%);
+	mix-blend-mode: screen;
+}
