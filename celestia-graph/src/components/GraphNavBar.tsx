@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useCart } from '../context/CartContext'; // nuevo
+import { useNavigate } from 'react-router-dom'; // nuevo
 
 const injectGraphNavStyles = () => {
 	if (document.getElementById('graph-nav-styles')) return;
@@ -102,6 +104,21 @@ const injectGraphNavStyles = () => {
 	}
 	.gbtn.primary:hover {
 		filter: brightness(1.08);
+	}
+	.cart-badge {
+		position: absolute;
+		top: 4px;
+		right: 6px;
+		background: linear-gradient(90deg,#ff3fb4,#ffb347);
+		color: #09131d;
+		font-size: .55rem;
+		padding: .15rem .4rem .22rem;
+		border-radius: 1rem;
+		font-weight: 700;
+		letter-spacing: .5px;
+		box-shadow: 0 0 0 1px #ffffff22, 0 0 10px -2px #ff62d0;
+		min-width: 20px;
+		text-align: center;
 	}
 	/* Modal */
 	.adv-modal-backdrop {
@@ -374,6 +391,9 @@ const GraphNavBar: React.FC = () => {
 	const [adv, setAdv] = useState<AdvancedParams>(initialAdv);
 	const advRef = useRef<HTMLDivElement | null>(null);
 
+	const { items } = useCart(); // nuevo
+	const navigate = useNavigate(); // nuevo
+
 	const [notifications, setNotifications] = useState(() => ([
 		{ id: 1, title: 'Nuevo nodo detectado', ts: 'hace 2m', unread: true, type: 'INFO' },
 		{ id: 2, title: 'Alerta: actividad irregular', ts: 'hace 14m', unread: true, type: 'ALERT' },
@@ -486,6 +506,21 @@ const GraphNavBar: React.FC = () => {
 								boxShadow: '0 0 6px 2px #ff3fb455'
 							}} />
 						)}
+					</button>
+					<button
+						type="button"
+						className="gbtn"
+						onClick={() => navigate('/cart')}
+						aria-label="Carrito"
+						style={{ position: 'relative' }}
+					>
+						<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2">
+							<circle cx="10" cy="20" r="1" />
+							<circle cx="18" cy="20" r="1" />
+							<path d="M2 3h2l2.5 11.5a2 2 0 0 0 2 1.5h9.5a2 2 0 0 0 2-1.5L22 6H6" />
+						</svg>
+						Carrito
+						{items.length > 0 && <span className="cart-badge">{items.length}</span>}
 					</button>
 					<a
 						className="gbtn"
