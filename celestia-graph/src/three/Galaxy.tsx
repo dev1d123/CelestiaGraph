@@ -19,17 +19,18 @@ interface GalaxyProps {
 	showAxes?: boolean;
 	background?: string;
 	autoRotate?: boolean;
+	label?: string;
 }
 
 // Estado/config persistente fuera del componente (no se recrea en re-render)
 const parameters: GalaxyParameters = {
 	size: 0.01,
-	count: 100000,
-	branches: 8,
-	radius: 5,
+	count: 10000,
+	branches: 10,
+	radius: 3,
 	spin: 1,
 	randomness: 0.1,
-	randomnessPower: 3,
+	randomnessPower: 1,
 	insideColor: 0xff6030,
 	outsideColor: 0x391eb9,
 };
@@ -38,7 +39,8 @@ let gui: dat.GUI | null = null;
 let folderAdded = false;
 
 // Componente
-const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoRotate }) => {
+const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = 'transparent', autoRotate, label = 'Tema: waos' }) => {
+	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const pointsRef = useRef<THREE.Points | null>(null);
 	const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -48,8 +50,9 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 	const animationIdRef = useRef<number | null>(null);
 
 	useEffect(() => {
+		const container = containerRef.current;
 		const canvas = canvasRef.current;
-		if (!canvas) return;
+		if (!container || !canvas) return;
 
 		// Escena
 		const scene = new THREE.Scene();
@@ -58,17 +61,15 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 		if (showAxes) {
 			scene.add(new THREE.AxesHelper(5));
 		}
-		if (background) {
+		if (background && background !== 'transparent') {
 			scene.background = new THREE.Color(background);
 		}
 
 		// Cámara
-		const camera = new THREE.PerspectiveCamera(
-			75,
-			canvas.clientWidth / canvas.clientHeight,
-			0.1,
-			100
-		);
+		const width = container.clientWidth || window.innerWidth;
+		const height = container.clientHeight || window.innerHeight;
+
+		const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 100);
 		camera.position.set(3, 2, 3);
 		scene.add(camera);
 		cameraRef.current = camera;
@@ -76,7 +77,8 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 		// Renderer
 		const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-		renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+		renderer.setSize(width, height, false);
+		renderer.setClearColor(0x000000, 0); // transparente sobre capas
 		rendererRef.current = renderer;
 
 		// Controles
@@ -141,7 +143,13 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 		};
 
 		// GUI (solo una vez)
-		if (!gui) gui = new dat.GUI();
+		if (!gui) {
+			gui = new dat.GUI();
+			gui.domElement.style.zIndex = '30';
+			gui.domElement.style.position = 'fixed';
+			gui.domElement.style.top = '8px';
+			gui.domElement.style.right = '8px';
+		}
 		if (!folderAdded) {
 			const galaxyFolder = gui.addFolder('galaxy');
 			galaxyFolder.add(parameters, 'size').min(0).max(0.5).step(0.0001).onFinishChange(generateGalaxy);
@@ -157,7 +165,7 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 			folderAdded = true;
 		}
 
-		// Inicial
+		 // Siempre regenerar (aunque folderAdded ya exista)
 		generateGalaxy();
 
 		const clock = new THREE.Clock();
@@ -173,14 +181,24 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 		};
 		tick();
 
+		// ResizeObserver para tamaños dinámicos
+		const ro = new ResizeObserver(entries => {
+			for (const entry of entries) {
+				const w = entry.contentRect.width;
+				const h = entry.contentRect.height || 1;
+				camera.aspect = w / h;
+				camera.updateProjectionMatrix();
+				renderer.setSize(w, h, false);
+			}
+		});
+		ro.observe(container);
+
 		const handleResize = () => {
-			if (!canvas) return;
-			const width = canvas.clientWidth;
-			const height = canvas.clientHeight;
-			camera.aspect = width / height;
+			const w = container.clientWidth || window.innerWidth;
+			const h = container.clientHeight || window.innerHeight;
+			camera.aspect = w / h;
 			camera.updateProjectionMatrix();
-			renderer.setSize(width, height);
-			renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+			renderer.setSize(w, h, false);
 		};
 		window.addEventListener('resize', handleResize);
 
@@ -195,15 +213,50 @@ const Galaxy: React.FC<GalaxyProps> = ({ showAxes, background = '#000000', autoR
 			}
 			controls.dispose();
 			renderer.dispose();
+			ro.disconnect();
 		};
 	}, [showAxes, background, autoRotate]);
 
 	return (
-		<canvas
-			ref={canvasRef}
-			className="webgl"
-			style={{ width: '100%', height: '100%', display: 'block', background }}
-		/>
+		<div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
+			<canvas
+				ref={canvasRef}
+				className="webgl"
+				style={{
+					width: '100%',
+					height: '100%',
+					display: 'block',
+					position: 'absolute',
+					inset: 0,
+					zIndex: 5  // sobre capas de fondo
+				}}
+				/>
+			<div
+				style={{
+					position: 'absolute',
+					top: '50%',
+					left: '50%',
+					transform: 'translate(-50%, -50%)',
+					zIndex: 10,
+					pointerEvents: 'none',
+					// fontFamily eliminado para usar la fuente root
+					fontSize: '.85rem', // antes 1.15rem
+					fontWeight: 600,
+					letterSpacing: '.5px',
+					color: '#fff',
+					padding: '.6rem 1rem', // reducido
+					borderRadius: '0.85rem',
+					background: 'linear-gradient(145deg, rgba(20,30,50,.55), rgba(10,15,25,.65))',
+					backdropFilter: 'blur(8px) saturate(160%)',
+					WebkitBackdropFilter: 'blur(8px) saturate(160%)',
+					border: '1px solid rgba(255,255,255,0.12)',
+					boxShadow: '0 4px 14px -6px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.05) inset',
+					textShadow: '0 2px 6px rgba(0,0,0,0.55)'
+				}}
+			>
+				{label}
+			</div>
+		</div>
 	);
 };
 
