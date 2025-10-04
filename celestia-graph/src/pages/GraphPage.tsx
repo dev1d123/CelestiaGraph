@@ -1,6 +1,6 @@
 import React from 'react';
 import GraphNavBar from '../components/GraphNavBar';
-import Galaxy from '../three/Galaxy';
+import Universe from '../three/Universe';
 import '../styles/spaceBackground.css';
 
 const GraphPage: React.FC = () => {
@@ -35,7 +35,7 @@ const GraphPage: React.FC = () => {
 						height: '100vh',
 						overflow: 'hidden'
 					}}>
-						<Galaxy showAxes={false} autoRotate />
+						 <Universe autoRotate />
 					</div>
 				</section>
 			</main>
