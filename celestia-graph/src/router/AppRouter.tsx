@@ -5,6 +5,7 @@ import GraphPage from '../pages/GraphPage';
 import GraphSunPage from '../pages/GraphSunPage'; // añadido
 import CartPage from '../pages/CartPage'; // nuevo
 import { CartProvider } from '../context/CartContext'; // nuevo
+import ChatBotWidget from '../components/ChatBotWidget'; // nuevo
 
 const AppRouter: React.FC = () => (
   <BrowserRouter>
@@ -16,6 +17,7 @@ const AppRouter: React.FC = () => (
         <Route path="/cart" element={<CartPage />} /> {/* nuevo */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ChatBotWidget /> {/* nuevo */}
     </CartProvider>
   </BrowserRouter>
 );
