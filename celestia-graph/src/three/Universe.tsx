@@ -57,9 +57,10 @@ const sunParams: SunParams = {
 let sunGUI: dat.GUI | null = null;
 let sunFolderAdded = false;
 
-const MAX_PARTICLES_PER_GALAXY = 3200;               // nuevo (cap duro por galaxia)
+const MAX_PARTICLES_PER_GALAXY = 2200;               // nuevo (cap duro por galaxia)
 const GLOBAL_PARTICLE_BUDGET = 95000;                // límite total
 const LABEL_UPDATE_SKIP = 2;                         // actualizar labels cada N frames
+const MAX_GALAXY_VIEW_DISTANCE = 20;                 // reducido (antes 55) galaxias más lejos se ocultan
 // cache de materiales (reduce objetos)
 const pointsMaterialCache = new Map<string, THREE.PointsMaterial>();
 
@@ -102,7 +103,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		// Cámara
 		const width = container.clientWidth || window.innerWidth;
 		const height = container.clientHeight || window.innerHeight;
-		const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 200);
+		const camera = new THREE.PerspectiveCamera(62, width / height, 0.1, 120); // far reducido (antes 200)
 		// Vista cenital inicial
 		camera.position.set(0, 28, 0.01);
 		camera.lookAt(0, 0, 0);
@@ -151,6 +152,18 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		const runtimeGalaxies: GalaxyRuntime[] = [];
 
 		let totalParticles = 0; // acumulador global
+
+		const updateGalaxyVisibility = () => {
+			const camPos = camera.position;
+			runtimeGalaxies.forEach(g => {
+				const dist = camPos.distanceTo(g.center);
+				const visible = dist <= MAX_GALAXY_VIEW_DISTANCE;
+				if (g.group.visible !== visible) {
+					g.group.visible = visible;
+					g.labelDiv.style.display = visible ? 'block' : 'none';
+				}
+			});
+		};
 
 		const createGalaxy = (cfg: GalaxyConfig) => {
 			// no crear si excede presupuesto global
@@ -289,6 +302,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		});
 		console.log('[Universe] Building galaxies from labels:', galaxyLabels.length);
 		dynamicConfigs.forEach(cfg => createGalaxy(cfg));
+		updateGalaxyVisibility(); // inicial
 
 		type SunRuntime = {
 			group: THREE.Group;
@@ -518,6 +532,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			const width = container.clientWidth;
 			const height = container.clientHeight;
 			for (const g of runtimeGalaxies) {
+				if (!g.group.visible) continue; // skip ocultas
 				const screenPos = g.center.clone().project(camera);
 				// Ocultar si detrás
 				if (screenPos.z > 1) {
@@ -583,6 +598,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					s.core.rotation.y += galaxyRotationSpeed;
 				});
 			}
+			updateGalaxyVisibility(); // culling cada frame (barato)
 			controls.update();
 			updateLabels();
 			renderer.render(scene, camera);
