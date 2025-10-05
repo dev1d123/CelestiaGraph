@@ -214,7 +214,14 @@ export const NavBar: React.FC = () => {
 	return (
 		<nav className="nav-root" aria-label="Primary">
 			<div className="nav-inner">
-				<div className="nav-brand">Celestia Search</div>
+				<Link
+					to="/"
+					className="nav-brand"
+					aria-label="Ir al inicio"
+					onClick={() => setOpen(false)}
+				>
+					Celestia Search
+				</Link>
 				<div className="nav-spacer" />
 				<button
 					className="hamburger"
