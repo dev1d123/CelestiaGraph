@@ -386,8 +386,6 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					transition: 'opacity .25s'
 				});
 				tooltip.innerHTML = `
-					<strong>${g.labelDiv.textContent || 'SUN'}</strong><br/>
-					<span class="meta">Sol #${idx + 1}</span><br/>
 					<span class="dim">${title}</span>
 				`;
 				sunLayer.appendChild(tooltip);
