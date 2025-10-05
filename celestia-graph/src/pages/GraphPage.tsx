@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import Universe from '../three/Universe';
 import type { UniverseRef } from '../three/Universe';
 
@@ -11,21 +11,38 @@ import { apiService, type CombinedGroup } from '../services/ApiService';
 const STORAGE_KEY = 'combinedGroupsV1';
 
 function pickGalaxyLabel(labels: string[], used: Set<string>, idx: number): string {
-  const candidates = labels
-    .filter(w => /^[A-Za-z]{4,}$/.test(w))        // solo alfabetico >=4
-    .map(w => w.toLowerCase());
-  let picked = candidates.length
-    ? candidates[Math.floor(Math.random() * candidates.length)]
-    : '';
-  if (!picked) {
-    picked = curatedFallbacks[idx % curatedFallbacks.length].split(/\s+/)[0].toLowerCase();
+  const base = labels
+    .filter(w => typeof w === 'string')
+    .map(w => w.trim())
+    .filter(w => /^[A-Za-z]{4,}$/.test(w));
+  const unique = Array.from(new Set(base.map(w => w.toLowerCase())));
+  const tokens: string[] = [];
+  if (unique.length >= 3) {
+    const pool = [...unique];
+    for (let i = 0; i < 3; i++) {
+      const r = Math.floor(Math.random() * pool.length);
+      tokens.push(pool.splice(r, 1)[0]);
+    }
+  } else if (unique.length > 0) {
+    tokens.push(...unique);
   }
-  picked = picked.charAt(0).toUpperCase() + picked.slice(1);
-  let name = picked;
-  let c = 2;
-  while (used.has(name)) {
-    name = `${picked}${c}`;
-    c++;
+  let fallbackIdx = idx;
+  while (tokens.length < 3) {
+    const fallbackWords = curatedFallbacks[fallbackIdx % curatedFallbacks.length]
+      .split(/\s+/)
+      .map(w => w.toLowerCase())
+      .filter(w => /^[a-z]{3,}$/i.test(w));
+    for (const fw of fallbackWords) {
+      if (tokens.length < 3) tokens.push(fw); else break;
+    }
+    fallbackIdx++;
+  }
+  const formatted = tokens.slice(0, 3).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+  let name = formatted.join(', ');
+  if (used.has(name)) {
+    let c = 2;
+    while (used.has(`${name} (${c})`)) c++;
+    name = `${name} (${c})`;
   }
   used.add(name);
   return name;
@@ -55,6 +72,7 @@ const GraphPage: React.FC = () => {
 	const [galaxyNames, setGalaxyNames] = useState<string[]>([]);
 	const [galaxyArticles, setGalaxyArticles] = useState<Record<string, string[]>>({});
 	const [loadingData, setLoadingData] = useState(true);
+	const [searchTerm, setSearchTerm] = useState('');
 
 	useEffect(() => {
 		let stored: CombinedGroup[] = [];
@@ -94,6 +112,9 @@ const GraphPage: React.FC = () => {
 	}, [groups]);
 
 	const themes = galaxyNames;
+	const filteredThemes = themes.filter(t =>
+		t.toLowerCase().includes(searchTerm.toLowerCase())
+	);
 
 	const handleSunSelect = (data: { galaxy: string; sunIndex: number }) => {
 		setPendingSun(data);
@@ -112,6 +133,17 @@ const GraphPage: React.FC = () => {
 	const handleFocusGalaxy = (name: string) => {
 		universeRef.current?.focusGalaxy(name);
 	};
+
+	// Memo: evita re-render de Universe al cambiar searchTerm
+	const universeElement = useMemo(() => (
+		<Universe
+			ref={universeRef}
+			galaxies={themes}
+			galaxyArticles={galaxyArticles}
+			autoRotate
+			onSunSelect={handleSunSelect}
+		/>
+	), [themes, galaxyArticles]);
 
 	return (
 		<div className={`space-wrapper ${transitioning ? 'jump-out' : ''}`}>
@@ -148,8 +180,8 @@ const GraphPage: React.FC = () => {
 							top:0,
 							left:0,
 							height:'100%',
-							width:'190px',
-							padding:'0.75rem .85rem',
+							width:'260px',
+							padding:'0.85rem .95rem .9rem',
 							display:'flex',
 							flexDirection:'column',
 							gap:'.65rem',
@@ -159,13 +191,31 @@ const GraphPage: React.FC = () => {
 							zIndex:25
 						}}>
 							<h4 style={{
-								margin:'0 0 .25rem',
-								fontSize:'.7rem',
-								letterSpacing:'1.2px',
+								margin:'0 0 .35rem',
+								fontSize:'.72rem',
+								letterSpacing:'1.3px',
 								fontWeight:600,
 								color:'#ffcf7d',
 								textTransform:'uppercase'
-							}}>Índice</h4>
+							}}>Index</h4>
+							<div style={{position:'relative'}}>
+								<input
+									value={searchTerm}
+									onChange={e => setSearchTerm(e.target.value)}
+									placeholder="Find cluster..."
+									style={{
+										width:'80%',
+										padding:'.5rem .65rem',
+										background:'rgba(255,255,255,0.07)',
+										border:'1px solid rgba(255,255,255,0.12)',
+										borderRadius:'.55rem',
+										color:'#e8f2ff',
+										fontSize:'.62rem',
+										letterSpacing:'.4px',
+										outline:'none'
+									}}
+								/>
+							</div>
 							<ul style={{
 								listStyle:'none',
 								margin:0,
@@ -179,44 +229,50 @@ const GraphPage: React.FC = () => {
 									{loadingData && !themes.length && (
 										<li style={{ fontSize: '.65rem', color: '#ccc' }}>Cargando galaxias...</li>
 									)}
-									{!loadingData && themes.map(t => (
+									{!loadingData && !filteredThemes.length && (
+										<li style={{ fontSize: '.6rem', color:'#8896ab' }}>Sin coincidencias</li>
+									)}
+									{!loadingData && filteredThemes.map(t => (
 										<li key={t} style={{
 											display:'flex',
 											alignItems:'center',
 											justifyContent:'space-between',
-											gap:'.4rem',
-											background:'rgba(255,255,255,0.03)',
-											padding:'.45rem .55rem',
+											gap:'.6rem',
+											background:'rgba(255,255,255,0.035)',
+											padding:'.5rem .6rem',
 											borderRadius:'.55rem',
-											border:'1px solid rgba(255,255,255,0.06)'
+											border:'1px solid rgba(255,255,255,0.07)',
+											lineHeight:1.25
 										}}>
-											<span style={{fontSize:'.65rem', letterSpacing:'.4px', color:'#e3f0ff'}}>{t}</span>
+											<span style={{
+												fontSize:'.62rem',
+												letterSpacing:'.35px',
+												color:'#e3f0ff',
+												flex:1,
+												whiteSpace:'normal'
+											}}>{t}</span>
 											<button
 												onClick={() => handleFocusGalaxy(t)}
 												style={{
 													border:'none',
 													background:'linear-gradient(135deg,#ffb347,#ff8a3d)',
 													color:'#1a1205',
-													fontSize:'.6rem',
+													fontSize:'.58rem',
 													fontWeight:600,
-													padding:'.35rem .55rem',
+													padding:'.38rem .6rem',
 													borderRadius:'.45rem',
 													cursor:'pointer',
 													letterSpacing:'.5px',
+													flexShrink:0,
 													boxShadow:'0 2px 10px -4px rgba(0,0,0,.55)'
 												}}
-											>Ir</button>
+											>Go</button>
 										</li>
 									))}
 							</ul>
 						</div>
-						<Universe
-							ref={universeRef}
-							galaxies={themes}
-							galaxyArticles={galaxyArticles}
-							autoRotate
-							onSunSelect={handleSunSelect}
-						/>
+						{/* Reemplaza <Universe .../> por elemento memoizado */}
+						{universeElement}
 						{pendingSun && !transitioning && (
 							<div style={{
 								position:'absolute',
@@ -247,9 +303,9 @@ const GraphPage: React.FC = () => {
 										background:'radial-gradient(circle at 30% 25%, rgba(255,200,90,.12), transparent 70%)',
 										pointerEvents:'none'
 									}}/>
-									<h3 style={{margin:'0 0 .6rem', fontSize:'.95rem', color:'#ffd777', letterSpacing:'.6px'}}>Ir al Sistema</h3>
+									<h3 style={{margin:'0 0 .6rem', fontSize:'.95rem', color:'#ffd777', letterSpacing:'.6px'}}>Go to the article</h3>
 									<p style={{margin:'0 0 .9rem', lineHeight:1.4}}>
-										Has seleccionado el sol #{pendingSun.sunIndex + 1} del tema <strong>{pendingSun.galaxy}</strong>. ¿Deseas explorar sus planetas?
+									You have selected the article #{pendingSun.sunIndex + 1} from the cluster <strong>{pendingSun.galaxy}</strong>. Do you want to continue?
 									</p>
 									<div style={{display:'flex', gap:'.6rem'}}>
 										<button onClick={confirmGo} style={{
