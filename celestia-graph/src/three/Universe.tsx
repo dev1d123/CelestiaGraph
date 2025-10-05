@@ -98,7 +98,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 
 		// Sutil nebulosa / ambient
 		const fogColor = new THREE.Color(0x03060a);
-		scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.02); // densidad reducida
+		scene.fog = new THREE.FogExp2(new THREE.Color(fogColor.getHex()), 0.02); // densidad reducida
 
 		// Cámara
 		const width = container.clientWidth || window.innerWidth;
@@ -642,11 +642,6 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				suns.forEach(s => {
 					s.core.geometry.dispose();
 					s.glow.geometry.dispose();
-					const { core, glow } = createSunMesh(sunParams.coreColor, sunParams.glowColor);
-					s.group.remove(s.core, s.glow);
-					s.core = core;
-					s.glow = glow;
-					s.group.add(core, glow);
 				});
 			});
 			sf.add(sunParams, 'glowIntensity').min(1).max(3).step(0.05).onFinishChange(() => { // max ajustado (antes 4)
