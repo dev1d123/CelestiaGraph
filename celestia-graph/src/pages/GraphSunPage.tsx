@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import Planets from '../three/Planets';
+import RingsGraph from '../three/RingsGraph'; // nuevo
 import MiniChart3D from '../three/MiniChart3D';
 import { useCart } from '../context/CartContext'; // nuevo
+import '../styles/spaceBackground.css'; // añadido
 
 function useQuery() {
 	return new URLSearchParams(useLocation().search);
@@ -21,7 +22,7 @@ const GraphSunPage: React.FC = () => {
 
 	const [navOffset, setNavOffset] = useState(106); // fallback (56+50)
 	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
-	const [showRef, setShowRef] = useState(false); // nuevo: popover referencia
+	const [showRef, setShowRef] = useState(true); // referencia activa por defecto
 
 	useEffect(() => {
 		const calc = () => {
@@ -34,6 +35,11 @@ const GraphSunPage: React.FC = () => {
 		window.addEventListener('resize', calc);
 		return () => window.removeEventListener('resize', calc);
 	}, []);
+
+	// Ajustar profundidad mínima en modo similares (>=2 para que se vean más anillos)
+	useEffect(() => {
+		if (similarMode && depth < 2) setDepth(2);
+	}, [similarMode, depth]);
 
 	const handleAdd = () => {
 		const now = new Date();
@@ -51,108 +57,76 @@ const GraphSunPage: React.FC = () => {
 		setTimeout(()=>setJustAdded(false), 1800);
 	};
 
+	// NUEVO: handlers claros y excluyentes
+	const activateReference = () => {
+		if (!showRef) {
+			setShowRef(true);
+			setSimilarMode(false);
+			setDepth(3); // opcional: restaurar depth base al volver
+		}
+	};
+	const activateSimilar = () => {
+		if (!similarMode) {
+			setSimilarMode(true);
+			setShowRef(false);
+			if (depth < 2) setDepth(2);
+		}
+	};
+
 	return (
-			<div
-				style={{
-					position:'relative',
-					width:'100%',
-					height:`calc(100vh - ${navOffset}px)`, // ajustado
-					overflow:'hidden',
-					background:'#03060a'
-				}}
-			>
+		<div
+			className="space-wrapper" // fondo espacial
+			style={{
+				position:'relative',
+				width:'100%',
+				height:`calc(100vh - ${navOffset}px)`,
+				overflow:'hidden'
+			}}
+		>
+			<div className="stars" />
+			<div className="twinkling" />
+			<div className="clouds" />
 			<div style={{
 				position:'relative',
 				width:'100%',
 				height:'100%' // ya no restamos de nuevo
 			}}>
-				<Planets
-					sunLabel={sun}
+				{/* Visual principal (sin force graph) */}
+				<RingsGraph
+					centerLabel={sun}
 					depth={depth}
-					trimLinks
-					nodePadding={4}
-					/* 
-						TODO en Planets:
-						- Al renderizar cada link (source, target) calcular vector y recortar longitud restando nodePadding (o radio del nodo).
-						- Ej: const pad = nodePadding || 0; start = lerp(source, target, pad/dist); end = lerp(target, source, pad/dist);
-					*/
+					mode={showRef ? 'reference' : 'similar'}
 				/>
-				{/* Etiqueta superior izquierda */}
+
+				{/* Toast / mensajes centrados arriba (fuera de HUD laterales) */}
 				<div style={{
 					position:'absolute',
-					top:10,
-					left:'14px',
-					padding:'.55rem .9rem',
-					borderRadius:'.75rem',
-					background:'linear-gradient(140deg, rgba(25,35,55,.75), rgba(10,15,25,.85))',
-					border:'1px solid rgba(255,255,255,.12)',
-					color:'#ffe5b0',
-					fontSize:'.7rem',
-					letterSpacing:'.6px',
-					textTransform:'uppercase',
-					fontWeight:600,
-					zIndex:20,
-					backdropFilter:'blur(8px) saturate(160%)'
+					top:8,
+					left:'50%',
+					transform:'translateX(-50%)',
+					display:'flex',
+					flexDirection:'column',
+					alignItems:'center',
+					gap:'.5rem',
+					zIndex:60,
+					pointerEvents:'none'
 				}}>
-					Sol #{idx} / {sun}
+					{justAdded && (
+						<div style={toastStyle('#43e9ff','#081923')}>
+							Elemento añadido a la lista
+						</div>
+					)}
+					{showRef && (
+						<div style={toastStyle('#ffb347','#211405')}>
+							Modo referencia activo
+						</div>
+					)}
+					{similarMode && (
+						<div style={toastStyle('#ff3fb4','#2a0f23')}>
+							Modo similares (usa el control de profundidad)
+						</div>
+					)}
 				</div>
-
-				 {/* Popover referencia (nuevo) */}
-				{showRef && (
-					<div style={{
-						position:'absolute',
-						top:56,
-						left:18,
-						zIndex:40,
-						minWidth:'240px',
-						maxWidth:'300px',
-						padding:'.85rem .9rem .95rem',
-						background:'linear-gradient(150deg,#142233ee,#0b1422ee)',
-						border:'1px solid #264564',
-						borderRadius:'.9rem',
-						fontSize:'.62rem',
-						lineHeight:1.5,
-						color:'#d1e9ff',
-						boxShadow:'0 10px 32px -12px #000'
-					}}>
-						<h4 style={{margin:'0 0 .45rem', fontSize:'.72rem', letterSpacing:'.6px', color:'#ffcf7b'}}>Referencia Base</h4>
-						<p style={{margin:0, opacity:.85}}>
-							Este sistema se toma como ancla semántica para generar recomendaciones de nodos similares. Datos simulados.
-						</p>
-						<button
-							onClick={()=>setShowRef(false)}
-							style={{
-								marginTop:'.7rem',
-								background:'#1e3147',
-								border:'1px solid #2f4d6a',
-								color:'#9cd0ff',
-								fontSize:'.6rem',
-								padding:'.4rem .65rem',
-								borderRadius:'.55rem',
-								cursor:'pointer'
-							}}
-						>Cerrar</button>
-					</div>
-				)}
-
-				{/* Badge modo similares */}
-				{similarMode && (
-					<div style={{
-						position:'absolute',
-						top:10,
-						right:360,
-						background:'linear-gradient(120deg,#43e9ff33,#ff3fb433)',
-						border:'1px solid #43e9ff66',
-						color:'#b9f3ff',
-						padding:'.4rem .65rem',
-						borderRadius:'.65rem',
-						fontSize:'.55rem',
-						letterSpacing:'.55px',
-						backdropFilter:'blur(6px)'
-					}}>
-						Similares ACTIVOS
-					</div>
-				)}
 
 				{/* HUD Izquierda (gráfico 3D) */}
 				<div style={{
@@ -160,14 +134,14 @@ const GraphSunPage: React.FC = () => {
 					top:0,
 					left:0,
 					bottom:0,
-					width:'360px',
-					padding:'18px 14px 14px',
+					width:'300px', // reducido
+					padding:'14px 12px 12px',
 					display:'flex',
 					flexDirection:'column',
-					gap:'1rem',
-					background:'linear-gradient(180deg, rgba(10,15,25,.85), rgba(10,15,25,.55))',
-					borderRight:'1px solid rgba(255,255,255,.08)',
-					backdropFilter:'blur(12px)',
+					gap:'.8rem',
+					background:'linear-gradient(180deg, rgba(10,15,25,.8), rgba(10,15,25,.45))',
+					borderRight:'1px solid rgba(255,255,255,.07)',
+					backdropFilter:'blur(10px)',
 					zIndex:15
 				}}>
 					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Telemetría del DAG</h3>
@@ -197,17 +171,17 @@ const GraphSunPage: React.FC = () => {
 				{/* HUD Derecha (info) */}
 				<div style={{
 					position:'absolute',
-					top:10,
+					top:0,
 					right:0,
 					bottom:0,
-					width:'340px',
-					padding:'18px 16px 16px',
+					width:'280px', // reducido
+					padding:'16px 14px 14px',
 					display:'flex',
 					flexDirection:'column',
-					gap:'.85rem',
-					background:'linear-gradient(180deg, rgba(12,18,30,.85), rgba(12,18,30,.55))',
-					borderLeft:'1px solid rgba(255,255,255,.08)',
-					backdropFilter:'blur(12px)',
+					gap:'.75rem',
+					background:'linear-gradient(180deg, rgba(12,18,30,.82), rgba(12,18,30,.42))',
+					borderLeft:'1px solid rgba(255,255,255,.07)',
+					backdropFilter:'blur(10px)',
 					zIndex:15
 				}}>
 					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Panel de Datos</h3>
@@ -259,60 +233,62 @@ const GraphSunPage: React.FC = () => {
 					</button>
 				</div>
 
-				{/* HUD Inferior actualizado */}
+				 {/* Controles inferiores */}
 				<div style={{
 					position:'absolute',
 					left:'50%',
 					transform:'translateX(-50%)',
-					bottom:'12px',
-					padding:'10px 16px',
+					bottom:'10px',
+					padding:'10px 14px',
 					display:'flex',
 					alignItems:'center',
-					gap:'.9rem',
-					background:'rgba(12,20,34,0.78)',
+					flexWrap:'wrap',
+					justifyContent:'center',
+					gap:'.75rem',
+					background:'rgba(12,20,34,0.72)',
 					border:'1px solid rgba(140,180,255,.25)',
-					borderRadius:'1rem',
-					boxShadow:'0 4px 18px -6px rgba(0,0,0,.55)',
+					borderRadius:'.95rem',
+					boxShadow:'0 4px 16px -6px rgba(0,0,0,.55)',
 					backdropFilter:'blur(10px) saturate(160%)',
-					zIndex:25
+					zIndex:65
 				}}>
 					<button
-						onClick={()=>setShowRef(r=>!r)}
+						onClick={activateReference}
 						style={miniBtn(showRef ? '#ffb347' : '#43e9ff')}
 					>
-						{showRef ? 'Ocultar ref.' : 'Ver por referencia'}
+						{showRef ? 'Referencia activa' : 'Ver referencia'}
 					</button>
 					<button
-						onClick={()=>setSimilarMode(m=>!m)}
+						onClick={activateSimilar}
 						style={miniBtn(similarMode ? '#ff3fb4' : '#7dff8c')}
 					>
-						{similarMode ? 'Desactivar similares' : 'Mostrar artículos similares'}
+						{similarMode ? 'Similares activos' : 'Mostrar similares'}
 					</button>
-					<div style={{display:'flex', alignItems:'center', gap:'.55rem'}}>
-						<div style={{fontSize:'.58rem', letterSpacing:'.5px', color: similarMode ? '#8fb6ff' : '#587497', fontWeight:600}}>
+					<div style={{display:'flex', alignItems:'center', gap:'.5rem'}}>
+						<div style={{fontSize:'.56rem', letterSpacing:'.5px', color: similarMode ? '#8fb6ff' : '#4c6279', fontWeight:600}}>
 							Profundidad
 						</div>
 						<input
 							type="range"
-							min={1}
+							min={2}
 							max={6}
 							value={depth}
 							disabled={!similarMode}
 							onChange={e => setDepth(parseInt(e.target.value, 10))}
 							style={{
-								width:'160px',
-								opacity: similarMode ? 1 : .35,
+								width:'150px',
+								opacity: similarMode ? 1 : .25,
 								cursor: similarMode ? 'pointer' : 'not-allowed'
 							}}
 						/>
 						<div style={{
-							fontSize:'.6rem',
+							fontSize:'.58rem',
 							color: similarMode ? '#ffd28a' : '#6d5f48',
 							fontWeight:600,
 							minWidth:'28px',
 							textAlign:'right'
 						}}>
-							{depth}
+							{similarMode ? depth : '-'}
 						</div>
 					</div>
 				</div>
@@ -336,6 +312,20 @@ const miniBtn = (accent: string): React.CSSProperties => ({
 	alignItems:'center',
 	whiteSpace:'nowrap',
 	boxShadow:'0 4px 14px -6px #000'
+});
+
+// Nuevo helper estilo toast
+const toastStyle = (accent: string, bg: string): React.CSSProperties => ({
+	background:`linear-gradient(120deg, ${bg}, ${bg}dd)`,
+	border:`1px solid ${accent}55`,
+	color: accent === '#ffc463' ? '#201504' : '#d8f6ff',
+	fontSize:'.6rem',
+	padding:'.55rem .85rem',
+	letterSpacing:'.55px',
+	borderRadius:'.8rem',
+	boxShadow:'0 6px 18px -10px #000',
+	backdropFilter:'blur(6px)',
+	whiteSpace:'nowrap'
 });
 
 export default GraphSunPage;
