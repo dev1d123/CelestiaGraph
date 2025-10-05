@@ -1,18 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { fetchChat } from '../services/ApiService';
 
-type ChatMsg = { id: string; role: 'user' | 'bot'; text: string; ts: number; };
+type ChatMsg = {
+  id: string;
+  role: 'user' | 'bot';
+  text: string;
+  ts: number;
+  meta?: {
+    action?: string;
+    keywords?: string[];
+    data?: string;
+  };
+};
 
 const LS_KEY = 'cg_chat_history_v1';
-
-const dummyReplies = [
-  'Procesando nodos... listo (dummy).',
-  'Índice sincronizado (simulado).',
-  'Latencia media: 42ms (placeholder).',
-  'Mensaje de respuesta ficticio.',
-  'Expansión semántica no habilitada.',
-  'Bases de datos enlazadas (demo).',
-  'Grafo estable sin anomalías.'
-];
 
 const injectStyles = () => {
   if (document.getElementById('cg-chat-styles')) return;
@@ -233,6 +234,45 @@ const injectStyles = () => {
     text-align:center;
     margin-top:1.4rem;
   }
+  .cg-keywords {
+    margin-top:.45rem;
+    display:flex;
+    flex-wrap:wrap;
+    gap:.35rem;
+  }
+  .cg-chip {
+    background:linear-gradient(120deg,#1e3550,#264869);
+    border:1px solid #2d5d80;
+    padding:.3rem .5rem;
+    font-size:.48rem;
+    border-radius:.65rem;
+    letter-spacing:.4px;
+    color:#d0ecff;
+    position:relative;
+  }
+  .cg-chip:before {
+    content:'#';
+    opacity:.55;
+    margin-right:2px;
+  }
+  .cg-action {
+    margin-top:.4rem;
+    font-size:.5rem;
+    font-weight:600;
+    letter-spacing:.5px;
+    color:#ffc2ec;
+  }
+  .cg-data {
+    margin-top:.4rem;
+    font-size:.5rem;
+    padding:.45rem .55rem;
+    background:#0f1e30;
+    border:1px solid #253d53;
+    border-radius:.55rem;
+    white-space:pre-wrap;
+    max-height:140px;
+    overflow:auto;
+  }
   @media (max-width:520px) {
     .cg-chat-fab {
       width:74px;
@@ -274,23 +314,29 @@ const ChatBotWidget: React.FC = () => {
     }
   }, [messages, open]);
 
-  const send = (e?: React.FormEvent) => {
+  const send = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim() || pending) return;
     const userMsg: ChatMsg = { id:'u-'+Date.now(), role:'user', text:input.trim(), ts:Date.now() };
     setMessages(m => [...m, userMsg]);
+    const userText = input.trim();
     setInput('');
     setPending(true);
-    setTimeout(() => {
-      const botMsg: ChatMsg = {
-        id:'b-'+Date.now(),
-        role:'bot',
-        text: dummyReplies[Math.floor(Math.random()*dummyReplies.length)],
-        ts: Date.now()
-      };
-      setMessages(m => [...m, botMsg]);
-      setPending(false);
-    }, 700 + Math.random()*900);
+
+    const resp = await fetchChat(userText, 'default');
+    const botMsg: ChatMsg = {
+      id:'b-'+Date.now(),
+      role:'bot',
+      text: resp.message || '(sin mensaje)',
+      ts: Date.now(),
+      meta: {
+        action: resp.action || undefined,
+        keywords: resp.keywords && resp.keywords.length ? resp.keywords : undefined,
+        data: resp.data ? resp.data : undefined
+      }
+    };
+    setMessages(m => [...m, botMsg]);
+    setPending(false);
   };
 
   const clear = () => {
@@ -334,7 +380,22 @@ const ChatBotWidget: React.FC = () => {
             {messages.length === 0 && <div className="cg-empty">No hay mensajes.</div>}
             {messages.map(msg => (
               <div key={msg.id} className={`cg-msg ${msg.role}`}>
-                {msg.text}
+                <div>{msg.text}</div>
+                {msg.meta?.action && (
+                  <div className="cg-action">Acción: {msg.meta.action}</div>
+                )}
+                {msg.meta?.keywords && (
+                  <div className="cg-keywords">
+                    {msg.meta.keywords.map(k => <span key={k} className="cg-chip">{k}</span>)}
+                  </div>
+                )}
+                {msg.meta?.data && (
+                  <div className="cg-data">
+                    {msg.meta.data.length > 650
+                      ? msg.meta.data.slice(0, 650) + '...'
+                      : msg.meta.data}
+                  </div>
+                )}
                 <span className="cg-time">{new Date(msg.ts).toLocaleTimeString()}</span>
               </div>
             ))}

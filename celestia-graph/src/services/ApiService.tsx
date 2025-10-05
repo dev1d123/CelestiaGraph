@@ -21,6 +21,8 @@ const BASE_URL = (envClusterUrl ? envClusterUrl.replace(/\/+$/, '') : DEFAULT_CL
 // Nuevas URLs explícitas (sin depender de BASE_URL)
 const UNIGRAM_URL = 'https://pmb-clusterign.vercel.app/cluster/unigramKeywords';
 const ARTICLES_URL = 'https://pmb-clusterign.vercel.app/cluster/cluster';
+// NUEVO: endpoint para obtener id por título
+const ID_BY_TITLE_URL = 'https://pmb-clusterign.vercel.app/data/igByTitle';
 
 export interface ClusterItem {
   id: string;
@@ -41,6 +43,22 @@ export interface CombinedGroup {
   index: number;
   labels: string[];
   articles: string[];
+  // NUEVO: artículos enriquecidos con IDs
+  articleEntries: ArticleEntry[];
+}
+
+// NUEVO: entrada de artículo con id resuelto
+export interface ArticleEntry {
+  title: string;
+  id: string | null;
+}
+
+// NUEVO: interface respuesta chat
+export interface ChatAPIResponse {
+  action: string;
+  message: string;
+  keywords: string[];
+  data: string;
 }
 
 // (Opcional) esquema zod si decides validar (ajusta campos)
@@ -58,6 +76,8 @@ export interface CombinedGroup {
 
 class ApiService {
   private client: AxiosInstance;
+  // NUEVO: cache simple para títulos -> id
+  private titleIdCache = new Map<string, string | null>();
 
   constructor() {
     this.client = axios.create({
@@ -126,9 +146,9 @@ class ApiService {
         return raw.map(g => {
           const entries = Object.entries(g)
             .filter(e => !isNaN(Number(e[0])))
-            .sort((a, b) => Number(a[0]) - Number(b[0]))
+            .sort((a, b) => Number(a[0]) - Number(b[0])) // FIX: se cerró paréntesis faltante
             .map(e => e[1])
-            .filter(v => typeof v === 'string');
+            .filter(v => typeof v === 'string')
           return entries;
         });
       }
@@ -229,6 +249,54 @@ class ApiService {
     return norm;
   }
 
+  // NUEVO: obtiene id por título (con cache)
+  async getIdByTitle(title: string, signal?: AbortSignal): Promise<string | null> {
+    const clean = (title || '').trim();
+    if (!clean) return null;
+    if (this.titleIdCache.has(clean)) return this.titleIdCache.get(clean)!;
+    try {
+      const { data } = await axios.get(ID_BY_TITLE_URL, { params: { title: clean }, signal });
+      // Intentos de normalización
+      let id: any = null;
+      if (typeof data === 'string') {
+        // si la API devolviera texto simple
+        id = data;
+      } else if (data && typeof data === 'object') {
+        // posibles claves
+        id = (data as any).id
+          ?? (data as any).article_id
+          ?? (data as any).uid
+          ?? (data as any).data?.id
+          ?? null;
+      }
+      if (id != null) id = String(id);
+      this.titleIdCache.set(clean, id);
+      return id;
+    } catch (e) {
+      console.warn('[ApiService] getIdByTitle fallo para:', clean, e);
+      this.titleIdCache.set(clean, null);
+      return null;
+    }
+  }
+
+  // NUEVO: limitador simple de concurrencia para resolver muchos títulos
+  private async fetchIdsForTitles(titles: string[], signal?: AbortSignal, concurrency = 6): Promise<Map<string, string | null>> {
+    const unique = Array.from(new Set(titles.map(t => t.trim()).filter(Boolean)));
+    const result = new Map<string, string | null>();
+    let idx = 0;
+    const worker = async () => {
+      while (idx < unique.length) {
+        const current = unique[idx++];
+        if (result.has(current)) continue;
+        const id = await this.getIdByTitle(current, signal);
+        result.set(current, id);
+      }
+    };
+    const workers = Array.from({ length: Math.min(concurrency, unique.length) }, () => worker());
+    await Promise.all(workers);
+    return result;
+  }
+
   // Merge final
   async getCombinedGroups(signal?: AbortSignal): Promise<CombinedGroup[]> {
     const [labelsGroups, articleGroups] = await Promise.all([
@@ -236,20 +304,60 @@ class ApiService {
       this.getArticleGroups(signal)
     ]);
     console.log('[ApiService] Debug sizes -> labels:', labelsGroups.length, 'articles:', articleGroups.length);
+
+    // NUEVO: recolectar todos los títulos para resolución de IDs
+    const allTitles = articleGroups.flatMap(g => g);
+    const idMap = await this.fetchIdsForTitles(allTitles, signal);
+    console.log('[ApiService] IDs resueltos (count):', idMap.size);
+
     const max = Math.max(labelsGroups.length, articleGroups.length);
     const combined: CombinedGroup[] = [];
     for (let i = 0; i < max; i++) {
+      const rawArticles = articleGroups[i] || [];
+      const articleEntries = rawArticles.map(title => ({
+        title,
+        id: idMap.get(title.trim()) ?? null
+      }));
       combined.push({
         index: i,
         labels: labelsGroups[i] || [],
-        articles: articleGroups[i] || []
+        articles: rawArticles,          // se conserva para compatibilidad
+        articleEntries                  // nuevo enriquecido
       });
     }
-    console.log('[ApiService] Combined groups count:', combined.length, 'sample:', combined[0]);
+    console.log('[ApiService] Combined groups count (enriched):', combined.length, 'sample:', combined[0]);
     return combined;
   }
 
-  // Utilidad con AbortController (ejemplo de patrón)
+  // NUEVO: método chat (restaurado)
+  async chat(userInput: string, userId = 'default', signal?: AbortSignal): Promise<ChatAPIResponse> {
+    if (!userInput.trim()) {
+      return { action: '', message: '', keywords: [], data: '' };
+    }
+    try {
+      const { data } = await axios.post(
+        'https://chatbot-api-two.vercel.app/chat/',
+        { user_input: userInput, user_id: userId },
+        { signal }
+      );
+      const resp: ChatAPIResponse = {
+        action: (data?.action ?? '') + '',
+        message: (data?.message ?? '') + '',
+        keywords: Array.isArray(data?.keywords) ? data.keywords.filter((k: any) => typeof k === 'string') : [],
+        data: (data?.data ?? '') + ''
+      };
+      return resp;
+    } catch (e: any) {
+      console.warn('[ApiService] chat error', e);
+      return {
+        action: 'error',
+        message: e?.message ? `Error: ${e.message}` : 'Error desconocido',
+        keywords: [],
+        data: ''
+      };
+    }
+  }
+
   withAbort<T>(fn: (signal: AbortSignal) => Promise<T>): { promise: Promise<T>; abort: () => void } {
     const controller = new AbortController();
     const promise = fn(controller.signal);
@@ -258,15 +366,14 @@ class ApiService {
 }
 
 export const apiService = new ApiService();
-
-// Helpers directos si prefieres funciones sueltas
 export const fetchCluster = (p?: Record<string, any>, signal?: AbortSignal) =>
   apiService.getCluster(p, signal);
 export const fetchClusterById = (id: string, signal?: AbortSignal) =>
   apiService.getClusterById(id, signal);
 export const searchCluster = (q: string, signal?: AbortSignal) =>
   apiService.searchCluster(q, signal);
-
-// Nuevo helper
 export const fetchCombinedGroups = (signal?: AbortSignal) =>
   apiService.getCombinedGroups(signal);
+// NUEVO helper chat
+export const fetchChat = (input: string, userId = 'default', signal?: AbortSignal) =>
+  apiService.chat(input, userId, signal);
