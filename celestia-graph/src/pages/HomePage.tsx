@@ -3,26 +3,32 @@ import HeroMain from '../components/HeroMain';
 import LineDiv from '../components/LineDiv';
 import InformationBox from '../components/InformationBox';
 import { apiService, type ClusterItem } from '../services/ApiService';
+import type { CombinedGroup } from '../services/ApiService';
+
+const STORAGE_KEY = 'combinedGroupsV1';
 
 const HomePage: React.FC = () => {
-  const [items, setItems] = useState<ClusterItem[]>([]);
+  const [groups, setGroups] = useState<CombinedGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const { promise, abort } = apiService.withAbort(signal =>
-      apiService.getCluster(undefined, signal)
+      apiService.getCombinedGroups(signal)
     );
     promise
       .then(res => {
-        setItems(res.items || []);
+        setGroups(res);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
+        } catch { /* ignore */ }
         setError(null);
-        console.log('Cluster data (home mount):', res);
+        console.log('[HomePage] Resultado combinado final:', res);
       })
       .catch(err => {
         if (err?.name === 'CanceledError') return;
-        setError(err?.message || 'Error cargando datos');
-        console.error('Cluster fetch error:', err);
+        setError(err?.message || 'Error cargando datos combinados');
+        console.error('Combined fetch error:', err);
       })
       .finally(() => setLoading(false));
     return () => abort();
@@ -34,13 +40,13 @@ const HomePage: React.FC = () => {
       <LineDiv />
       <InformationBox />
       <section style={{ padding: '1rem', fontFamily: 'monospace' }}>
-        {loading && <div>Cargando cluster...</div>}
+        {loading && <div>Cargando datos combinados...</div>}
         {!loading && error && <div style={{ color: 'red' }}>Error: {error}</div>}
         {!loading && !error && (
           <>
-            <div>Total items: {items.length}</div>
+            <div>Grupos combinados: {groups.length}</div>
             <pre style={{ maxHeight: 300, overflow: 'auto', background: '#111', color: '#0f0', padding: '0.5rem' }}>
-{JSON.stringify(items.slice(0, 20), null, 2)}
+{JSON.stringify(groups.slice(0, 5), null, 2)}
             </pre>
           </>
         )}

@@ -7,8 +7,9 @@ import { setCameraState, getCameraState } from '../state/cameraStore';
 interface UniverseProps {
 	autoRotate?: boolean;
 	background?: string;
-	onSunSelect?: (data: { galaxy: string; sunIndex: number }) => void;
+	onSunSelect?: (data: { galaxy: string; sunIndex: number; article?: string }) => void;
 	galaxies?: string[];
+	galaxyArticles?: Record<string, string[]>;
 }
 
 export interface UniverseRef {
@@ -29,74 +30,6 @@ interface GalaxyConfig {
 	size: number;
 }
 
-const galaxyConfigs: GalaxyConfig[] = [
-	{
-		label: 'Tema: A',
-		count: 7000,
-		radius: 2.2,
-		branches: 6,
-		spin: 1,
-		randomness: 0.14,
-		randomnessPower: 2,
-		insideColor: 0xffd66b,
-		outsideColor: 0xeb4d2d,
-		position: new THREE.Vector3(-9, 0, -3),
-		size: 0.012,
-	},
-	{
-		label: 'Tema: B',
-		count: 9000,
-		radius: 2.8,
-		branches: 5,
-		spin: 1.2,
-		randomness: 0.1,
-		randomnessPower: 3,
-		insideColor: 0x73d7ff,
-		outsideColor: 0x264bff,
-		position: new THREE.Vector3(0, 2, 4),
-		size: 0.011,
-	},
-	{
-		label: 'Tema: C',
-		count: 6000,
-		radius: 1.9,
-		branches: 8,
-		spin: 0.8,
-		randomness: 0.16,
-		randomnessPower: 2,
-		insideColor: 0xe4b1ff,
-		outsideColor: 0x6f2fb8,
-		position: new THREE.Vector3(7.5, -1.2, -2),
-		size: 0.013,
-	},
-	{
-		label: 'Tema: D',
-		count: 7500,
-		radius: 2.4,
-		branches: 7,
-		spin: 1.4,
-		randomness: 0.11,
-		randomnessPower: 2,
-		insideColor: 0xa6ff9e,
-		outsideColor: 0x1d7f38,
-		position: new THREE.Vector3(-4, -2.2, 6),
-		size: 0.012,
-	},
-	{
-		label: 'Tema: E',
-		count: 8500,
-		radius: 3,
-		branches: 5,
-		spin: 1.1,
-		randomness: 0.12,
-		randomnessPower: 3,
-		insideColor: 0xffffff,
-		outsideColor: 0x657bff,
-		position: new THREE.Vector3(5, 3, 5),
-		size: 0.0105,
-	},
-];
-
 interface SunParams {
 	sunSize: number;
 	glowIntensity: number;
@@ -105,6 +38,12 @@ interface SunParams {
 	coreColor: number;
 	glowColor: number;
 }
+
+const colorPairs: Array<[number, number]> = [
+	[0xffd66b, 0xeb4d2d], [0x73d7ff, 0x264bff], [0xe4b1ff, 0x6f2fb8], [0xa6ff9e, 0x1d7f38],
+	[0xffffff, 0x657bff], [0xffb37d, 0xf25c54], [0x9dffef, 0x1e6f74], [0xf6afff, 0x7d31c7],
+	[0xc4ff77, 0x347f1d], [0xfff4b3, 0xff8c42]
+];
 
 const sunParams: SunParams = {
 	sunSize: 0.18, // antes 0.35
@@ -122,7 +61,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 	autoRotate = true,
 	background = 'transparent',
 	onSunSelect,
-	galaxies = ['Tema A', 'Tema B'],
+	galaxies: galaxyLabels = ['Tema A', 'Tema B'], // renamed to avoid shadow
+	galaxyArticles = {},
 	...rest
 }, ref) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +141,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			radius: number;
 		};
 
-		const galaxies: GalaxyRuntime[] = [];
+		// renamed runtime collection
+		const runtimeGalaxies: GalaxyRuntime[] = [];
 
 		const createGalaxy = (cfg: GalaxyConfig) => {
 			const positions = new Float32Array(cfg.count * 3);
@@ -283,16 +224,47 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			Object.assign(div.style, labelStyles);
 			labelLayer.appendChild(div);
 
-			galaxies.push({
+			runtimeGalaxies.push({
 				group,
 				center: cfg.position.clone(),
 				labelDiv: div,
 				radius: cfg.radius
-				});
+			});
 			galaxyNodesRef.current[cfg.label] = { group, center: cfg.position.clone(), radius: cfg.radius };
 		};
 
-		galaxyConfigs.forEach(cfg => createGalaxy(cfg));
+		// BUILD dynamic configs from prop galaxyLabels (not the runtime array)
+		const dynamicConfigs: GalaxyConfig[] = (galaxyLabels || []).map((label, i) => {
+			const pair = colorPairs[i % colorPairs.length];
+			// ring layout (rough 12 per ring)
+			const perRing = 12;
+			const ring = Math.floor(i / perRing);
+			const indexInRing = i % perRing;
+			const ringRadius = 10 + ring * 10; // distance between rings
+			const angle = ((indexInRing) / perRing) * Math.PI * 2;
+			const pos = new THREE.Vector3(
+				Math.cos(angle) * ringRadius,
+				(Math.random() - 0.5) * 2.5,
+				Math.sin(angle) * ringRadius
+			);
+			const articleCount = (galaxyArticles?.[label]?.length || 0);
+			const baseCount = 4500 + Math.min(6000, articleCount * 350); // scale star count by #articles
+			return {
+				label,
+				count: baseCount,
+				radius: 1.8 + Math.min(3.2, articleCount * 0.12),
+				branches: 5 + (i % 4),
+				spin: 0.9 + (i % 3) * 0.15,
+				randomness: 0.10 + (i % 5) * 0.01,
+				randomnessPower: 2,
+				insideColor: pair[0],
+				outsideColor: pair[1],
+				position: pos,
+				size: 0.0105
+			};
+		});
+		console.log('[Universe] Building galaxies from labels:', galaxyLabels.length);
+		dynamicConfigs.forEach(cfg => createGalaxy(cfg));
 
 		type SunRuntime = {
 			group: THREE.Group;
@@ -303,6 +275,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			orbitSpeed: number;
 			galaxyCenter: THREE.Vector3;
 			tooltip: HTMLDivElement;
+			article?: string;
 		};
 
 		const suns: SunRuntime[] = [];
@@ -350,8 +323,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		};
 
 		const createSunsForGalaxy = (g: GalaxyRuntime) => {
-			const count = Math.floor(Math.random() * 8) + 3; // 3-10
-			for (let i = 0; i < count; i++) {
+			const articles = galaxyArticles[g.labelDiv.textContent || ''] || [];
+			articles.forEach((title, idx) => {
 				const { core, glow } = createSunMesh();
 				const group = new THREE.Group();
 				group.add(core);
@@ -373,8 +346,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				Object.assign(tooltip.style, sunTooltipStyle());
 				tooltip.innerHTML = `
 					<strong>${g.labelDiv.textContent || 'SUN'}</strong><br/>
-					<span class="meta">Sol #${i + 1}</span><br/>
-					<span class="dim">Orbit: ${orbitRadius.toFixed(2)}</span>
+					<span class="meta">Sol #${idx + 1}</span><br/>
+					<span class="dim">${title}</span>
 				`;
 				sunLayer.appendChild(tooltip);
 
@@ -386,12 +359,13 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					orbitRadius,
 					orbitSpeed: sunParams.orbitSpeed * (0.4 + Math.random() * 0.9),
 					galaxyCenter: g.center.clone(),
-					tooltip
+					tooltip,
+					article: title
 				});
-			}
+			});
 		};
 
-		galaxies.forEach(g => createSunsForGalaxy(g));
+		runtimeGalaxies.forEach(g => createSunsForGalaxy(g));
 
 		// Animación de enfoque de cámara
 		let camAnimActive = false;
@@ -435,7 +409,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				const obj = sunHits[0].object as THREE.Mesh;
 				const sunIdx = suns.findIndex(s => s.core === obj);
 				if (sunIdx >= 0 && suns[sunIdx]) {
-					const gLabel = galaxies.find(g => g.center.distanceTo(suns[sunIdx].galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
+					const gLabel = runtimeGalaxies.find(g => g.center.distanceTo(suns[sunIdx].galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
 					if (hoverRing) {
 						scene.remove(hoverRing);
 						hoverRing.geometry.dispose();
@@ -443,7 +417,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 						hoverRing = null;
 					}
 					if (typeof (onSunSelect) === 'function') {
-						onSunSelect({ galaxy: gLabel, sunIndex: sunIdx });
+						onSunSelect({ galaxy: gLabel, sunIndex: sunIdx, article: suns[sunIdx].article });
 					}
 					return;
 				}
@@ -451,7 +425,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 
 			// 2) Fallback: click galaxia (mantener comportamiento previo)
 			const pointObjects: THREE.Object3D[] = [];
-			galaxies.forEach(g => {
+			runtimeGalaxies.forEach(g => {
 				g.group.traverse(o => {
 					if ((o as THREE.Points).isPoints) pointObjects.push(o);
 				});
@@ -460,7 +434,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			if (intersects.length) {
 				for (const inter of intersects) {
 					const pts = inter.object as THREE.Points;
-					const g = galaxies.find(gl => gl.group.children.includes(pts));
+					const g = runtimeGalaxies.find(gl => gl.group.children.includes(pts));
 					if (!g) continue;
 					if (inter.point.distanceTo(g.center) > g.radius * 0.7) continue;
 					startCameraFocus(g.center, g.radius);
@@ -535,7 +509,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			if (!camera) return;
 			const width = container.clientWidth;
 			const height = container.clientHeight;
-			for (const g of galaxies) {
+			for (const g of runtimeGalaxies) {
 				const screenPos = g.center.clone().project(camera);
 				// Ocultar si detrás
 				if (screenPos.z > 1) {
@@ -581,7 +555,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			if (autoRotate && !paused) { // añadido !paused
 				// Rotación unificada (misma dirección/velocidad para todas)
 				const galaxyRotationSpeed = 0.0012;
-				galaxies.forEach(g => {
+				runtimeGalaxies.forEach(g => {
 					g.group.rotation.y += galaxyRotationSpeed;
 				});
 			}
@@ -699,7 +673,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			ro.disconnect();
 			canvas.removeEventListener('pointerdown', handleClick);
 			canvas.removeEventListener('pointermove', handlePointerMove);
-			galaxies.forEach(g => {
+			runtimeGalaxies.forEach(g => {
 				g.group.traverse(obj => {
 					if ((obj as THREE.Points).isPoints) {
 						const pts = obj as THREE.Points;
@@ -737,7 +711,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				});
 			}
 		};
-	}, [autoRotate, background, onSunSelect]);
+	}, [autoRotate, background, onSunSelect, galaxyArticles, galaxyLabels]); // updated dependency
 
 	useImperativeHandle(ref, () => ({
 		focusGalaxy: (name: string) => {
