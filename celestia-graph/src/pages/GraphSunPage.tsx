@@ -64,15 +64,15 @@ const GraphSunPage: React.FC = () => {
 
 	const handleAdd = () => {
 		const now = new Date();
+		const artId = `${Date.now()}`; // id numérico simple
 		addItem({
-			id: `${sun}-${idx}-${now.getTime()}`,
-			label: `Nodo ${sun} #${idx}`,
-			category: ['Core', 'Edge', 'Meta'][Math.floor(Math.random()*3)],
-			depth,
-			energy: (50 + Math.random()*450).toFixed(0),
-			price: (10 + Math.random()*190).toFixed(2),
-			addedAt: now.toISOString(),
-			note: 'Artículo simulado (demo)'
+			id: artId,
+			name: `Nodo ${sun} #${idx}`,
+			date: now.toISOString().split('T')[0],
+			keywords: ['dag','demo','grafico'].join(', '),
+			authors: 'Autor Demo',
+			abstract: 'Elemento agregado desde la visualización (demo).',
+			link: `https://example.org/demo/${artId}`
 		});
 		setJustAdded(true);
 		setTimeout(()=>setJustAdded(false), 1800);

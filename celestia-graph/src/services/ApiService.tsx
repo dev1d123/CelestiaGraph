@@ -6,7 +6,8 @@ import type { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 // Ajustable mediante .env (VITE_CLUSTER_API=https://...)
 // Fallback al dominio dado
-const DEFAULT_CLUSTER_URL = 'https://pmb-clusterign-mf45tqic4-rodrygoleus-projects.vercel.app/cluster';
+// Nueva URL base completa (lista en: https://pmb-clusterign.vercel.app/cluster/cluster)
+const DEFAULT_CLUSTER_URL = 'https://pmb-clusterign.vercel.app/cluster/cluster';
 let envClusterUrl = '';
 try {
   const meta: any = typeof import.meta !== 'undefined' ? (import.meta as any) : {};
@@ -79,25 +80,36 @@ class ApiService {
     return { message: 'Unexpected error', original: err };
   }
 
+  private buildPath(segment?: string) {
+    if (!segment) return '';
+    return segment.replace(/^\/+/, '');
+  }
+
   // GET lista completa (o paginada si la API soporta params)
   async getCluster(params?: Record<string, any>, signal?: AbortSignal): Promise<ClusterResponse> {
     const cfg: AxiosRequestConfig = { params, signal };
-    const { data } = await this.client.get('/', cfg);
+    // GET directo a la URL completa solicitada
+    const { data } = await axios.get(BASE_URL, cfg);
+    console.log('[ApiService] Raw cluster response:', data, 'type:', Object.prototype.toString.call(data));
     // Validación opcional
     // return ClusterResponseSchema.parse(
     //   Array.isArray(data) ? { items: data } : data
     // );
-    if (Array.isArray(data)) {
-      return { items: data };
+    if (Array.isArray(data)) return { items: data };
+    if (data && Array.isArray(data.items)) return { items: data.items, total: data.total };
+    if (data && typeof data === 'object') {
+      // intento de inferir items si vienen bajo otra key común
+      const possible = ['data', 'results', 'list', 'clusters', 'nodes'].find(k => Array.isArray((data as any)[k]));
+      if (possible) return { items: (data as any)[possible] };
     }
-    if (data && data.items) return data;
     return { items: [] };
   }
 
   // GET por id (si el backend expone /cluster/:id)
   async getClusterById(id: string, signal?: AbortSignal): Promise<ClusterItem | null> {
     if (!id) return null;
-    const { data } = await this.client.get(`/${encodeURIComponent(id)}`, { signal });
+    const path = this.buildPath(encodeURIComponent(id));
+    const { data } = await this.client.get(path, { signal });
     // return ClusterItemSchema.parse(data);
     return data || null;
   }
