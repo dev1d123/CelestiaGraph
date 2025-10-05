@@ -4,6 +4,18 @@ import RingsGraph from '../three/RingsGraph'; // nuevo
 import MiniChart3D from '../three/MiniChart3D';
 import { useCart } from '../context/CartContext'; // nuevo
 import '../styles/spaceBackground.css'; // añadido
+import examplePMC from '../assets/example.json'; // simulación local BioC
+
+// Constante modificable para pruebas PMC
+const DEFAULT_PMC_CODE = 'PMC11988870';
+
+// Tipo para las referencias que se enviarán al grafo
+type ReferenceNode = {
+	id: string;
+	nombre: string;
+	autores: string[];
+	fecha: string | null;
+};
 
 function useQuery() {
 	return new URLSearchParams(useLocation().search);
@@ -23,6 +35,7 @@ const GraphSunPage: React.FC = () => {
 	const [navOffset, setNavOffset] = useState(106); // fallback (56+50)
 	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
 	const [showRef, setShowRef] = useState(true); // referencia activa por defecto
+	const [references, setReferences] = useState<ReferenceNode[]>([]);
 
 	useEffect(() => {
 		const calc = () => {
@@ -60,6 +73,72 @@ const GraphSunPage: React.FC = () => {
 			document.body.style.overflow = prevBodyOverflow;
 			document.documentElement.style.overflow = prevHtmlOverflow;
 		};
+	}, []);
+
+	// Simulación: carga local example.json (sin petición HTTP)
+	useEffect(() => {
+		try {
+			console.group('[GraphSunPage] Simulated PMC BioC payload');
+			console.log('Using DEFAULT_PMC_CODE:', DEFAULT_PMC_CODE);
+			console.log('Full raw object (example.json):', examplePMC);
+
+			const firstCollection: any = Array.isArray(examplePMC) ? examplePMC[0] : null;
+			const firstDoc = firstCollection?.documents?.[0];
+			if (firstDoc) {
+				console.log('Document ID:', firstDoc.id);
+				const titlePassage = firstDoc.passages?.find((p: any) => p.infons?.section_type === 'TITLE')
+					|| firstDoc.passages?.[0];
+				const abstractPassage = firstDoc.passages?.find((p: any) => p.infons?.section_type === 'ABSTRACT');
+				console.log('Title:', titlePassage?.text);
+				if (abstractPassage?.text) {
+					const abs = abstractPassage.text;
+					console.log('Abstract (first 300 chars):', abs.slice(0, 300) + (abs.length > 300 ? '...' : ''));
+				}
+				console.log('Total passages:', firstDoc.passages?.length);
+				console.log('License:', firstDoc.passages?.[0]?.infons?.license);
+
+				// -------- NUEVO: extracción de referencias --------
+				const refPassages = (firstDoc.passages || []).filter(
+					(p: any) => p?.infons?.section_type === 'REF' && p?.infons?.type === 'ref'
+				);
+
+				const referencias = refPassages.map((p: any, i: number) => {
+					const inf = p.infons || {};
+					const authorKeys = Object.keys(inf)
+						.filter(k => /^name_\d+$/.test(k))
+						.sort((a, b) => parseInt(a.split('_')[1], 10) - parseInt(b.split('_')[1], 10));
+
+					const autores = authorKeys.map(k => {
+						const raw = String(inf[k] || '');
+						const surnameMatch = raw.match(/surname:([^;]+)/i);
+						const givenMatch = raw.match(/given-names:([^;]+)/i);
+						const surname = surnameMatch ? surnameMatch[1].trim() : '';
+						const given = givenMatch ? givenMatch[1].trim() : '';
+						return (given && surname) ? `${given} ${surname}` : (surname || raw);
+					});
+
+					return {
+						id: String(i),
+						nombre: p.text?.trim() || '',
+						autores,
+						fecha: inf.year || inf['pub-id_year'] || inf.date || null
+					};
+				});
+
+				// Guardar en estado para usar en RingsGraph
+				setReferences(referencias);
+				// Logs existentes
+				console.log('[GraphSunPage] Total referencias encontradas:', referencias.length);
+				console.log('[GraphSunPage] Referencias (nombre, autores, fecha):', referencias);
+				console.log('[GraphSunPage] Referencias JSON string:', JSON.stringify(referencias, null, 2));
+				// ---------------------------------------------------
+			} else {
+				console.warn('No document found in example.json structure.');
+			}
+			console.groupEnd();
+		} catch (e) {
+			console.error('[GraphSunPage] Error simulating PMC load:', e);
+		}
 	}, []);
 
 	const handleAdd = () => {
@@ -117,6 +196,7 @@ const GraphSunPage: React.FC = () => {
 					centerLabel={sun}
 					depth={depth}
 					mode={showRef ? 'reference' : 'similar'}
+					references={references} // NUEVO
 				/>
 
 				{/* Toast / mensajes centrados arriba (fuera de HUD laterales) */}
