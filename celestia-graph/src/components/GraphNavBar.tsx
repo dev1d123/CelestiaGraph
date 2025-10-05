@@ -734,29 +734,6 @@ const GraphNavBar: React.FC = () => {
 					<button
 						type="button"
 						className="gbtn"
-						aria-label="Notificaciones"
-						onClick={() => setShowNotif(true)}
-					>
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-							<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-							<path d="M13.73 21a2 2 0 0 1-3.46 0" />
-						</svg>
-						{notifications.some(n => n.unread) && (
-							<span style={{
-								position: 'absolute',
-								top: 4,
-								right: 4,
-								width: 8,
-								height: 8,
-								background: 'linear-gradient(90deg,#ff3fb4,#ffb347)',
-								borderRadius: '50%',
-								boxShadow: '0 0 6px 2px #ff3fb455'
-							}} />
-						)}
-					</button>
-					<button
-						type="button"
-						className="gbtn"
 						onClick={() => navigate('/cart')}
 						aria-label="Carrito"
 						style={{ position: 'relative' }}
@@ -994,44 +971,7 @@ const GraphNavBar: React.FC = () => {
 				</div>
 			)}
 
-			{/* Panel de notificaciones */}
-			{showNotif && (
-				<>
-					<div className="notify-overlay" onClick={() => setShowNotif(false)} />
-					<aside className="notify-panel" aria-label="Panel de notificaciones">
-						<div className="notify-head">
-							<h4>Notificaciones</h4>
-							<div style={{ display: 'flex', gap: '.4rem' }}>
-								<button
-									className="gbtn"
-									style={{ fontSize: '.55rem', padding: '.4rem .7rem' }}
-									onClick={markAll}
-								>Marcar leídas</button>
-								<button
-									className="gbtn"
-									style={{ fontSize: '.55rem', padding: '.4rem .7rem' }}
-									onClick={() => setShowNotif(false)}
-								>Cerrar</button>
-							</div>
-						</div>
-						<ul className="notify-list">
-							{notifications.map(n => (
-								<li key={n.id} className={`notification ${n.unread ? 'unread' : ''}`}>
-									<span className="nbadge">{n.type}</span>
-									<div>{n.title}</div>
-									<small>{n.ts}</small>
-									{n.unread && (
-										<button
-											className="mark-read-btn"
-											onClick={() => markRead(n.id)}
-										>Marcar leído</button>
-									)}
-								</li>
-							))}
-						</ul>
-					</aside>
-				</>
-			)}
+			
 		</>
 	);
 };
