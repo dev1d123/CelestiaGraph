@@ -27,6 +27,7 @@ interface RefEdge {
 const ROT_SPEED_REFERENCE = 0.001; // reducido
 const ROT_SPEED_SIMILAR = 0.001;   // reducido
 const ringCounts = [6, 12, 18, 24];
+const CENTER_Y_OFFSET = 80; // nuevo offset vertical del planeta central
 
 const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNodeHover }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +127,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
       roughness: 0.25
     });
     centerRef.current = new THREE.Mesh(cGeo, cMat);
+    centerRef.current.position.set(0, CENTER_Y_OFFSET, 0); // aplicado offset
     groupRef.current!.add(centerRef.current);
 
     const glowTex = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAIUlEQVQoU2NkYGD4z0AEMDEwMDCqYMQEo2E0DBgGEwXRAAAJzwYqVUIOmgAAAABJRU5ErkJggg==');
@@ -143,20 +145,19 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
 
     if (mode === 'similar') {
       const ringLayer = new THREE.Group();
+      ringLayer.position.y = CENTER_Y_OFFSET; // alinear capa de anillos con el centro elevado
       groupRef.current!.add(ringLayer);
       for (let r = 0; r < rings; r++) {
-        const ringRadius = (r + 1) * ringStep * 0.68 + 70;
-        const torusGeo = new THREE.TorusGeometry(ringRadius, 0.85 + r * 0.12, 16, 128);
+        const ringRadius = (r + 1) * ringStep * 0.62 + 55; // reducido
+        const torusGeo = new THREE.TorusGeometry(ringRadius, 0.65 + r * 0.10, 16, 96);
         const torusMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color().setHSL(0.78 - r * 0.07, 0.55, 0.55),
           transparent: true,
-          opacity: 0.18 + r * 0.04,
+          opacity: 0.16 + r * 0.035,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         });
         const torus = new THREE.Mesh(torusGeo, torusMat);
-        // Antes: torus.rotation.x = Math.PI / 2;
-        // Ahora lo dejamos en el plano XY para que sea un círculo perfecto frente a la cámara.
         torus.rotation.set(0, 0, 0);
         ringLayer.add(torus);
       }
@@ -166,13 +167,15 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
       const count = ringCounts[r];
       const ringGroup = new THREE.Group();
       ringGroup.userData.ringIndex = r;
+      // NUEVO: el grupo se traslada al offset central para que la rotación mantenga los nodos en el anillo
+      ringGroup.position.y = CENTER_Y_OFFSET;
       groupRef.current!.add(ringGroup);
 
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2;
-        const ringRadius = (r + 1) * ringStep * 0.68 + 70;
+        const ringRadius = (r + 1) * ringStep * 0.62 + 55;
         const x = Math.cos(angle) * ringRadius;
-        const y = Math.sin(angle) * ringRadius;
+        const yLocal = Math.sin(angle) * ringRadius; // y relativo dentro del grupo (sin sumar OFFSET)
         const z = mode === 'reference'
           ? (r - (rings - 1) / 2) * ringZGap
           : 0;
@@ -188,7 +191,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
           roughness: 0.38
         });
         const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(x, y, z);
+        mesh.position.set(x, yLocal, z); // ACTUALIZADO (antes y absoluto)
         mesh.userData.baseEmissive = emiss.clone();
         mesh.userData.ring = r;
 
@@ -310,34 +313,30 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
       const t = performance.now() * 0.001;
       const paused = !!hoveredRef.current;
 
-      if (mode === 'similar') {
-        if (!paused) {
-          nodesRef.current.forEach(n => {
-            const speed = 0.12 * (0.5 + n.ring * 0.18);
-            n.angle += speed * 0.016;
-            const x = Math.cos(n.angle) * (n.radius || 1);
-            const y = Math.sin(n.angle) * (n.radius || 1);
-            n.mesh.position.set(x, y, 0);
-          });
-        }
-      } else {
-        if (!paused) {
-          groupRef.current?.children.forEach(child => {
-            if ((child as any).userData?.ringIndex !== undefined) {
-              const idx = (child as any).userData.ringIndex;
-              const speed = ROT_SPEED_REFERENCE * (idx % 2 === 0 ? 1 : -1);
-              child.rotation.z += speed;
-            }
-          });
-        }
+      // ROTACIÓN RÍGIDA DEL ANILLO (ambos modos) SIN DESPLAZAR NODOS
+      if (!paused) {
+        groupRef.current?.children.forEach(child => {
+          if ((child as any).userData?.ringIndex !== undefined) {
+            const idx = (child as any).userData.ringIndex;
+            const speed = (mode === 'reference'
+              ? ROT_SPEED_REFERENCE
+              : ROT_SPEED_SIMILAR * 0.75) * (idx % 2 === 0 ? 1 : -1);
+            child.rotation.z += speed;
+          }
+        });
       }
 
+      // SPIN LOCAL DE CADA PLANETA (no altera su posición orbital)
+      nodesRef.current.forEach(n => {
+        if (!paused) {
+          n.mesh.rotation.y += 0.02; // giro propio
+        }
+      });
+
+      // PULSO / FLICKER (sin mover posiciones)
       nodesRef.current.forEach(n => {
         const mat = n.mesh.material as THREE.MeshStandardMaterial;
         if (!paused) {
-          const basePulse = Math.sin(t * 1.6 + n.ring) * 0.05;
-          const scaleBase = 1 + basePulse;
-          n.mesh.scale.set(scaleBase, scaleBase, scaleBase);
           if (mode === 'similar') {
             const flick = 0.01 * Math.sin(t * 5 + n.ring);
             mat.emissive.copy(n.mesh.userData.baseEmissive).addScalar(flick);
@@ -347,21 +346,50 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
         }
       });
 
-      if (centerRef.current) {
-        centerRef.current.rotation.y += paused ? 0.0015 : 0.0035;
-      }
-
+      // ARISTAS DINÁMICAS EN MODO REFERENCE (siguen unidas al planeta)
       if (mode === 'reference') {
         refEdges.current.forEach(e => {
-          const posAttr = e.line.geometry.getAttribute('position') as THREE.BufferAttribute;
-          const p = e.node.mesh.getWorldPosition(new THREE.Vector3());
-          const localEnd = groupRef.current!.worldToLocal(p.clone());
-          posAttr.setXYZ(0, 0, 0, 0);
-          posAttr.setXYZ(1, localEnd.x, localEnd.y, localEnd.z);
-          posAttr.needsUpdate = true;
+          if (!groupRef.current || !centerRef.current) return;
+          const attr = e.line.geometry.getAttribute('position') as THREE.BufferAttribute;
+
+          // POSICIONES EN ESPACIO LOCAL DEL groupRef (no mundo) PARA EVITAR DOBLE ROTACIÓN
+          const centerWorld = centerRef.current.getWorldPosition(new THREE.Vector3());
+          const centerLocal = groupRef.current.worldToLocal(centerWorld.clone());
+          const nodeWorld = e.node.mesh.getWorldPosition(new THREE.Vector3());
+          const nodeLocal = groupRef.current.worldToLocal(nodeWorld.clone());
+
+          const dir = nodeLocal.clone().sub(centerLocal);
+          const len = dir.length();
+          if (len === 0) return;
+          dir.normalize();
+
+          // Radios (precalculados o computar si falta)
+            if (!centerRef.current.geometry.boundingSphere) {
+              centerRef.current.geometry.computeBoundingSphere();
+            }
+            if (!e.node.mesh.geometry.boundingSphere) {
+              e.node.mesh.geometry.computeBoundingSphere();
+            }
+            const centerRadius =
+              centerRef.current.geometry.boundingSphere?.radius ??
+              (centerRef.current.geometry as any)?.parameters?.radius ??
+              24;
+            const nodeRadius =
+              e.node.mesh.geometry.boundingSphere?.radius ??
+              (e.node.mesh.geometry as any)?.parameters?.radius ??
+              10;
+
+          // Puntos sobre la superficie de cada planeta
+          const start = centerLocal.clone().add(dir.clone().multiplyScalar(centerRadius));
+          const end = nodeLocal.clone().sub(dir.clone().multiplyScalar(nodeRadius));
+
+          attr.setXYZ(0, start.x, start.y, start.z);
+          attr.setXYZ(1, end.x, end.y, end.z);
+          attr.needsUpdate = true;
         });
       }
 
+      // HOVER / LABEL (sin cambios)
       if (cameraRef.current) {
         raycaster.current.setFromCamera(pointer.current, cameraRef.current);
         const intersects = raycaster.current.intersectObjects(nodesRef.current.map(n => n.mesh));
@@ -393,6 +421,8 @@ const RingsGraph: React.FC<RingsGraphProps> = ({ centerLabel, depth, mode, onNod
           }
         }
       }
+
+      if (centerRef.current) centerRef.current.rotation.y += paused ? 0.0015 : 0.0035;
 
       renderer.render(scene, cameraRef.current!);
     };

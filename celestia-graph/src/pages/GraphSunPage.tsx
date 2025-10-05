@@ -41,6 +41,27 @@ const GraphSunPage: React.FC = () => {
 		if (similarMode && depth < 2) setDepth(2);
 	}, [similarMode, depth]);
 
+	// bloqueo de scroll (wheel / touch) al montar
+	useEffect(() => {
+		const prevBodyOverflow = document.body.style.overflow;
+		const prevHtmlOverflow = document.documentElement.style.overflow;
+		document.body.style.overflow = 'hidden';
+		document.documentElement.style.overflow = 'hidden';
+		const prevent = (e: Event) => {
+			e.preventDefault();
+			e.stopPropagation();
+			return false;
+		};
+		window.addEventListener('wheel', prevent, { passive: false });
+		window.addEventListener('touchmove', prevent, { passive: false });
+		return () => {
+			window.removeEventListener('wheel', prevent);
+			window.removeEventListener('touchmove', prevent);
+			document.body.style.overflow = prevBodyOverflow;
+			document.documentElement.style.overflow = prevHtmlOverflow;
+		};
+	}, []);
+
 	const handleAdd = () => {
 		const now = new Date();
 		addItem({
@@ -80,7 +101,7 @@ const GraphSunPage: React.FC = () => {
 				position:'relative',
 				width:'100%',
 				height:`calc(100vh - ${navOffset}px)`,
-				overflow:'hidden'
+				overflow:'hidden' // asegurado
 			}}
 		>
 			<div className="stars" />
@@ -133,8 +154,8 @@ const GraphSunPage: React.FC = () => {
 					position:'absolute',
 					top:0,
 					left:0,
-					bottom:0,
-					width:'300px', // reducido
+					height:'82%', // nuevo (antes ocupaba todo)
+					width:'300px',
 					padding:'14px 12px 12px',
 					display:'flex',
 					flexDirection:'column',
@@ -142,6 +163,7 @@ const GraphSunPage: React.FC = () => {
 					background:'linear-gradient(180deg, rgba(10,15,25,.8), rgba(10,15,25,.45))',
 					borderRight:'1px solid rgba(255,255,255,.07)',
 					backdropFilter:'blur(10px)',
+					overflow:'hidden', // cambiado (antes auto)
 					zIndex:15
 				}}>
 					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Telemetría del DAG</h3>
@@ -173,8 +195,8 @@ const GraphSunPage: React.FC = () => {
 					position:'absolute',
 					top:0,
 					right:0,
-					bottom:0,
-					width:'280px', // reducido
+					height:'82%', // nuevo
+					width:'280px',
 					padding:'16px 14px 14px',
 					display:'flex',
 					flexDirection:'column',
@@ -182,6 +204,7 @@ const GraphSunPage: React.FC = () => {
 					background:'linear-gradient(180deg, rgba(12,18,30,.82), rgba(12,18,30,.42))',
 					borderLeft:'1px solid rgba(255,255,255,.07)',
 					backdropFilter:'blur(10px)',
+					overflow:'hidden', // cambiado (antes auto)
 					zIndex:15
 				}}>
 					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Panel de Datos</h3>
@@ -238,7 +261,7 @@ const GraphSunPage: React.FC = () => {
 					position:'absolute',
 					left:'50%',
 					transform:'translateX(-50%)',
-					bottom:'10px',
+					bottom:'150px',
 					padding:'10px 14px',
 					display:'flex',
 					alignItems:'center',
