@@ -1,14 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 export type CartItem = {
-  id: string;
-  label: string;
-  category: string;
-  depth: number;
-  energy: string;
-  price: string;
-  addedAt: string;
-  note?: string;
+  id: string;        // número / identificador de artículo
+  name: string;      // nombre
+  date: string;      // fecha (ISO corto)
+  keywords: string;  // lista separada por comas
+  authors: string;   // autores (separados por coma)
+  abstract: string;  // resumen
+  link: string;      // enlace
 };
 
 type CartCtx = {
@@ -22,11 +21,27 @@ const CartContext = createContext<CartCtx | null>(null);
 
 const LS_KEY = 'celestia_graph_cart_v1';
 
+// MIGRACIÓN legacy
+function upgradeLegacy(obj: any): CartItem {
+  if (obj && 'name' in obj && 'abstract' in obj) return obj as CartItem;
+  return {
+    id: obj?.id ?? String(Date.now()),
+    name: obj?.label ?? 'Item migrado',
+    date: obj?.addedAt ? String(obj.addedAt).split('T')[0] : new Date().toISOString().split('T')[0],
+    keywords: obj?.category ? String(obj.category) : '',
+    authors: 'N/A',
+    abstract: obj?.note || 'Elemento migrado desde formato anterior.',
+    link: '#'
+  };
+}
+
 export const CartProvider: React.FC<{children: React.ReactNode}> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
-      return raw ? JSON.parse(raw) : [];
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.map(upgradeLegacy) : [];
     } catch {
       return [];
     }
@@ -37,10 +52,7 @@ export const CartProvider: React.FC<{children: React.ReactNode}> = ({ children }
   }, [items]);
 
   const addItem = useCallback((item: CartItem) => {
-    setItems(list => {
-      if (list.some(i => i.id === item.id)) return list;
-      return [...list, item];
-    });
+    setItems(list => list.some(i => i.id === item.id) ? list : [...list, item]);
   }, []);
 
   const removeItem = useCallback((id: string) => {

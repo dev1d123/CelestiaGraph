@@ -6,44 +6,135 @@ import { Link } from 'react-router-dom';
 const CartPage: React.FC = () => {
   const { items, removeItem, clear } = useCart();
 
-  const total = useMemo(
-    () => items.reduce((acc, it) => acc + parseFloat(it.price), 0).toFixed(2),
-    [items]
-  );
+  const pdfCols = [
+    { key:'id', label:'ID', w:40 },
+    { key:'name', label:'Nombre', w:120 },
+    { key:'date', label:'Fecha', w:55 },
+    { key:'keywords', label:'Keywords', w:90 },
+    { key:'authors', label:'Autores', w:90 },
+    { key:'abstract', label:'Abstract', w:180 },
+    { key:'link', label:'Enlace', w:110 }
+  ];
 
   const exportPDF = () => {
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const doc = new jsPDF({ unit:'pt', format:'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const marginX = 36;
+    let y = 46;
+
     doc.setFontSize(16);
-    doc.text('CelestiaGraph - Lista de Artículos', 40, 48);
+    doc.text('CelestiaGraph - Lista de Artículos', marginX, y);
+    y += 18;
     doc.setFontSize(10);
-    let y = 78;
-    doc.text(`Total items: ${items.length} | Total $: ${total}`, 40, y);
-    y += 20;
+    doc.text(`Total: ${items.length}`, marginX, y);
+    y += 14;
+
     doc.setFontSize(9);
-    items.forEach((it, idx) => {
-      if (y > 760) { doc.addPage(); y = 60; }
-      doc.text(
-        `${idx + 1}. ${it.label} | Cat: ${it.category} | Depth: ${it.depth} | Energy: ${it.energy} | $${it.price}`,
-        40,
-        y
-      );
-      y += 16;
+    doc.setFillColor(26,52,78);
+    doc.setTextColor(255);
+    let x = marginX;
+    const headerH = 18;
+    pdfCols.forEach(c => {
+      doc.rect(x, y, c.w, headerH, 'F');
+      doc.text(c.label, x + 4, y + 12);
+      x += c.w;
     });
-    doc.save('celestia_graph_lista.pdf');
+    y += headerH;
+
+    const bodyFontSize = 8;
+    doc.setFontSize(bodyFontSize);
+    doc.setTextColor(30,30,34);
+
+    const lineGap = 10;
+    const rowPaddingY = 4;
+
+    const wrapText = (text: string, maxWidth: number) => {
+      const words = (text || '').split(/\s+/);
+      const lines: string[] = [];
+      let line = '';
+      words.forEach(w => {
+        const test = line ? line + ' ' + w : w;
+        if (doc.getTextWidth(test) > maxWidth - 6) {
+          if (line) lines.push(line);
+          line = w;
+        } else {
+          line = test;
+        }
+      });
+      if (line) lines.push(line);
+      return lines.slice(0, 5);
+    };
+
+    items.forEach(item => {
+      const heights: number[] = [];
+      const prepared: Record<string,string[]> = {};
+      pdfCols.forEach(c => {
+        const valRaw = (item as any)[c.key] ?? '';
+        const val = Array.isArray(valRaw) ? valRaw.join(', ') : String(valRaw);
+        if (c.key === 'link') {
+          prepared[c.key] = wrapText(val, c.w);
+        } else {
+          prepared[c.key] = wrapText(val, c.w);
+        }
+        heights.push(prepared[c.key].length);
+      });
+      const linesCount = Math.max(...heights);
+      const rowH = linesCount * lineGap + rowPaddingY * 2;
+
+      if (y + rowH > pageH - 40) {
+        doc.addPage();
+        y = 40;
+        doc.setFillColor(26,52,78);
+        doc.setTextColor(255);
+        let hx = marginX;
+        doc.setFontSize(9);
+        pdfCols.forEach(c => {
+          doc.rect(hx, y, c.w, headerH, 'F');
+            doc.text(c.label, hx + 4, y + 12);
+          hx += c.w;
+        });
+        y += headerH;
+        doc.setFontSize(bodyFontSize);
+        doc.setTextColor(30,30,34);
+      }
+
+      doc.setFillColor(240,245,250);
+      doc.rect(marginX, y, pdfCols.reduce((s,c)=>s+c.w,0), rowH, 'F');
+
+      let cx = marginX;
+      pdfCols.forEach(c => {
+        const lines = prepared[c.key];
+        lines.forEach((ln, idx) => {
+          doc.text(ln, cx + 4, y + rowPaddingY + 10 + idx * lineGap);
+        });
+        cx += c.w;
+      });
+
+      doc.setDrawColor(200,215,228);
+      doc.line(marginX, y + rowH, marginX + pdfCols.reduce((s,c)=>s+c.w,0), y + rowH);
+      y += rowH;
+    });
+
+    doc.save('celestia_graph_articulos.pdf');
   };
 
   const exportCSV = () => {
-    const header = ['id','label','category','depth','energy','price','addedAt','note'];
-    const rows = items.map(i => header.map(h => `"${(i as any)[h] ?? ''}"`).join(','));
+    const header = ['id','name','date','keywords','authors','abstract','link'];
+    const rows = items.map(i => header
+      .map(h => {
+        const v = (i as any)[h] ?? '';
+        return `"${String(v).replace(/"/g,'""')}"`;
+      })
+      .join(','));
     const csv = [header.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'celestia_graph_lista.csv';
+    a.download = 'celestia_graph_articulos.csv';
     a.click();
     URL.revokeObjectURL(url);
-    // Sugerencia: subir este CSV a Google Drive y abrir Sheets o importar directamente
   };
 
   const createGoogleSheetShortcut = () => {
@@ -73,8 +164,8 @@ const CartPage: React.FC = () => {
       </div>
 
       <div style={{display:'flex', gap:'.6rem', flexWrap:'wrap', margin:'0 0 1rem'}}>
-        <button onClick={exportPDF} className="exp-btn" style={btnStyle('#43e9ff','#102132')}>Descargar PDF</button>
-        <button onClick={exportCSV} className="exp-btn" style={btnStyle('#ffb347','#20140a')}>Exportar CSV</button>
+        <button onClick={exportPDF} className="exp-btn" style={btnStyle('#43e9ff','#102132')}>PDF</button>
+        <button onClick={exportCSV} className="exp-btn" style={btnStyle('#ffb347','#20140a')}>CSV</button>
         <button onClick={createGoogleSheetShortcut} style={btnStyle('#b4ff4d','#14210a')}>Crear hoja (Sheets)</button>
         <button onClick={clear} disabled={!items.length} style={{...btnStyle('#ff3f5e','#2a0d14'), opacity: items.length?1:.4}}>Vaciar</button>
       </div>
@@ -86,10 +177,10 @@ const CartPage: React.FC = () => {
         background:'linear-gradient(145deg,#0e1c2b,#0a141f)',
         boxShadow:'0 10px 28px -14px #000, 0 0 0 1px #ffffff08'
       }}>
-        <table style={{width:'100%', borderCollapse:'collapse', minWidth:'860px'}}>
+        <table style={{width:'100%', borderCollapse:'collapse', minWidth:'920px'}}>
           <thead>
             <tr style={{background:'#132739'}}>
-              {['#','Label','Categoría','Depth','Energy','Precio $','Añadido','Acción'].map(h => (
+              {['ID','Nombre','Fecha','Keywords','Autores','Abstract','Enlace','Acción'].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
@@ -102,15 +193,25 @@ const CartPage: React.FC = () => {
                 </td>
               </tr>
             )}
-            {items.map((it, idx) => (
+            {items.map(it => (
               <tr key={it.id} style={{borderTop:'1px solid #1a3146'}}>
-                <td style={tdStyle}>{idx+1}</td>
-                <td style={tdStyle}>{it.label}</td>
-                <td style={tdStyle}>{it.category}</td>
-                <td style={tdStyle}>{it.depth}</td>
-                <td style={tdStyle}>{it.energy}</td>
-                <td style={{...tdStyle, color:'#ffcf7b', fontWeight:600}}>{it.price}</td>
-                <td style={tdStyle}>{new Date(it.addedAt).toLocaleString()}</td>
+                <td style={tdStyle}>{it.id}</td>
+                <td style={tdStyle}>{it.name}</td>
+                <td style={tdStyle}>{it.date}</td>
+                <td style={tdStyle}>{it.keywords}</td>
+                <td style={tdStyle}>{it.authors}</td>
+                <td style={{...tdStyle, maxWidth:'260px', lineHeight:1.25}}>
+                  <span style={{display:'inline-block', whiteSpace:'normal'}}>
+                    {it.abstract}
+                  </span>
+                </td>
+                <td style={tdStyle}>
+                  {it.link === '#' ? '-' : (
+                    <a href={it.link} target="_blank" rel="noreferrer" style={{color:'#4ad4ff'}}>
+                      enlace
+                    </a>
+                  )}
+                </td>
                 <td style={tdStyle}>
                   <button
                     onClick={() => removeItem(it.id)}
@@ -127,19 +228,12 @@ const CartPage: React.FC = () => {
                 </td>
               </tr>
             ))}
-            {items.length > 0 && (
-              <tr style={{background:'#132739'}}>
-                <td style={{...tdStyle, fontWeight:700}} colSpan={5}>Totales</td>
-                <td style={{...tdStyle, fontWeight:700, color:'#ffcf7b'}}>{total}</td>
-                <td style={tdStyle} colSpan={2}>{items.length} items</td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
       <p style={{fontSize:'.6rem', opacity:.55, marginTop:'1rem', lineHeight:1.4}}>
-        Exporta CSV y súbelo / impórtalo manualmente en Google Sheets (Archivo &gt; Importar). El botón "Crear hoja (Sheets)" abre una nueva hoja y luego descarga el CSV automáticamente.
+        Exporta como PDF o CSV. El PDF genera una tabla estructurada; el CSV puede importarse en Google Sheets.
       </p>
     </div>
   );
