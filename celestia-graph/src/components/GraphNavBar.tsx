@@ -701,11 +701,11 @@ const GraphNavBar: React.FC = () => {
 					<input
 						name="quick"
 						type="text"
-						placeholder="Buscar en grafo..."
+						placeholder="Search an article..."
 						value={search}
 						onChange={e => setSearch(e.target.value)}
 						onKeyDown={e => { if (e.key === 'Escape') setShowResults(false); }}
-						aria-label="Buscar"
+						aria-label="Search"
 					/>
 				</form>
 
@@ -722,14 +722,14 @@ const GraphNavBar: React.FC = () => {
 								<path d="M3 5h18M6 12h12M10 19h4" />
 							</svg>
 						</span>
-						Búsqueda avanzada
+						Advanced search
 					</button>
 					<button
 						type="button"
 						className="gbtn primary"
 						onClick={submitQuick as any}
 					>
-						Buscar
+						Search
 					</button>
 					<button
 						type="button"
@@ -761,19 +761,22 @@ const GraphNavBar: React.FC = () => {
 						aria-label="Carrito"
 						style={{ position: 'relative' }}
 					>
-						<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" strokeWidth="2">
-							<circle cx="10" cy="20" r="1" />
-							<circle cx="18" cy="20" r="1" />
-							<path d="M2 3h2l2.5 11.5a2 2 0 0 0 2 1.5h9.5a2 2 0 0 0 2-1.5L22 6H6" />
+						<svg width="16" height="16" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2">
+						<line x1="8" y1="6" x2="21" y2="6" />
+						<line x1="8" y1="12" x2="21" y2="12" />
+						<line x1="8" y1="18" x2="21" y2="18" />
+						<line x1="3" y1="6" x2="3.01" y2="6" />
+						<line x1="3" y1="12" x2="3.01" y2="12" />
+						<line x1="3" y1="18" x2="3.01" y2="18" />
 						</svg>
-						Carrito
+						List
 						{items.length > 0 && <span className="cart-badge">{items.length}</span>}
 					</button>
 					<a
 						className="gbtn"
 						href="/"
 						style={{ textDecoration: 'none' }}
-					>Inicio</a>
+					>Home</a>
 				</div>
 			</header>
 
@@ -850,7 +853,7 @@ const GraphNavBar: React.FC = () => {
 							aria-label="Cerrar"
 							onClick={() => setShowAdv(false)}
 						>×</button>
-						<h3 id="adv-modal-title">Búsqueda avanzada</h3>
+						<h3 id="adv-modal-title">Advanced Search</h3>
 						<div className="adv-grid">
 							{/* ...existing code (campos) ... */}
 							<div className="afield">

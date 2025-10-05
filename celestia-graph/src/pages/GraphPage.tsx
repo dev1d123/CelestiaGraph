@@ -320,7 +320,7 @@ const GraphPage: React.FC = () => {
 											letterSpacing:'.5px',
 											boxShadow:'0 4px 18px -6px rgba(0,0,0,.6)'
 										}}>
-											Entrar
+											Enter
 										</button>
 										<button onClick={cancelGo} style={{
 											flex:1,
@@ -333,7 +333,7 @@ const GraphPage: React.FC = () => {
 											cursor:'pointer',
 											letterSpacing:'.5px'
 										}}>
-											Cancelar
+											Cancel
 										</button>
 									</div>
 								</div>
