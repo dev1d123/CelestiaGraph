@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Planets from '../three/Planets';
 import MiniChart3D from '../three/MiniChart3D';
@@ -16,12 +16,24 @@ const GraphSunPage: React.FC = () => {
 
 	const metrics = useMemo(() => Array.from({length:7}, () => 4 + Math.random()*16), []);
 	const [depth, setDepth] = useState(3); // nueva profundidad controlable
-	const NAVBAR_HEIGHT = 56; // altura del navbar (ajusta si cambia el componente)
-	const GRAPH_NAVBAR_HEIGHT = 50; // nuevo
-	const TOTAL_NAV_HEIGHT = NAVBAR_HEIGHT + GRAPH_NAVBAR_HEIGHT; // renombrado
-
 	const { addItem } = useCart(); // nuevo
 	const [justAdded, setJustAdded] = useState(false); // feedback rápido
+
+	const [navOffset, setNavOffset] = useState(106); // fallback (56+50)
+	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
+	const [showRef, setShowRef] = useState(false); // nuevo: popover referencia
+
+	useEffect(() => {
+		const calc = () => {
+			const primary = document.querySelector('.nav-root') as HTMLElement | null;
+			const secondary = document.querySelector('.graph-nav-root') as HTMLElement | null; // asumir clase en GraphNavBar
+			const h = (primary?.offsetHeight || 0) + (secondary?.offsetHeight || 0);
+			if (h > 0) setNavOffset(h);
+		};
+		calc();
+		window.addEventListener('resize', calc);
+		return () => window.removeEventListener('resize', calc);
+	}, []);
 
 	const handleAdd = () => {
 		const now = new Date();
@@ -40,15 +52,31 @@ const GraphSunPage: React.FC = () => {
 	};
 
 	return (
-		<div style={{position:'relative', width:'100%', height:'100vh', overflow:'hidden', background:'#03060a'}}>
-			{/* NavBar + GraphNavBar globales */}
+			<div
+				style={{
+					position:'relative',
+					width:'100%',
+					height:`calc(100vh - ${navOffset}px)`, // ajustado
+					overflow:'hidden',
+					background:'#03060a'
+				}}
+			>
 			<div style={{
 				position:'relative',
 				width:'100%',
-				height:`calc(100vh - ${TOTAL_NAV_HEIGHT}px)`, // actualizado
-				marginTop: 0 // quitado desplazamiento extra
+				height:'100%' // ya no restamos de nuevo
 			}}>
-				<Planets sunLabel={sun} depth={depth} />
+				<Planets
+					sunLabel={sun}
+					depth={depth}
+					trimLinks
+					nodePadding={4}
+					/* 
+						TODO en Planets:
+						- Al renderizar cada link (source, target) calcular vector y recortar longitud restando nodePadding (o radio del nodo).
+						- Ej: const pad = nodePadding || 0; start = lerp(source, target, pad/dist); end = lerp(target, source, pad/dist);
+					*/
+				/>
 				{/* Etiqueta superior izquierda */}
 				<div style={{
 					position:'absolute',
@@ -68,6 +96,63 @@ const GraphSunPage: React.FC = () => {
 				}}>
 					Sol #{idx} / {sun}
 				</div>
+
+				 {/* Popover referencia (nuevo) */}
+				{showRef && (
+					<div style={{
+						position:'absolute',
+						top:56,
+						left:18,
+						zIndex:40,
+						minWidth:'240px',
+						maxWidth:'300px',
+						padding:'.85rem .9rem .95rem',
+						background:'linear-gradient(150deg,#142233ee,#0b1422ee)',
+						border:'1px solid #264564',
+						borderRadius:'.9rem',
+						fontSize:'.62rem',
+						lineHeight:1.5,
+						color:'#d1e9ff',
+						boxShadow:'0 10px 32px -12px #000'
+					}}>
+						<h4 style={{margin:'0 0 .45rem', fontSize:'.72rem', letterSpacing:'.6px', color:'#ffcf7b'}}>Referencia Base</h4>
+						<p style={{margin:0, opacity:.85}}>
+							Este sistema se toma como ancla semántica para generar recomendaciones de nodos similares. Datos simulados.
+						</p>
+						<button
+							onClick={()=>setShowRef(false)}
+							style={{
+								marginTop:'.7rem',
+								background:'#1e3147',
+								border:'1px solid #2f4d6a',
+								color:'#9cd0ff',
+								fontSize:'.6rem',
+								padding:'.4rem .65rem',
+								borderRadius:'.55rem',
+								cursor:'pointer'
+							}}
+						>Cerrar</button>
+					</div>
+				)}
+
+				{/* Badge modo similares */}
+				{similarMode && (
+					<div style={{
+						position:'absolute',
+						top:10,
+						right:360,
+						background:'linear-gradient(120deg,#43e9ff33,#ff3fb433)',
+						border:'1px solid #43e9ff66',
+						color:'#b9f3ff',
+						padding:'.4rem .65rem',
+						borderRadius:'.65rem',
+						fontSize:'.55rem',
+						letterSpacing:'.55px',
+						backdropFilter:'blur(6px)'
+					}}>
+						Similares ACTIVOS
+					</div>
+				)}
 
 				{/* HUD Izquierda (gráfico 3D) */}
 				<div style={{
@@ -174,42 +259,83 @@ const GraphSunPage: React.FC = () => {
 					</button>
 				</div>
 
-				{/* HUD Inferior: selector profundidad DAG */}
+				{/* HUD Inferior actualizado */}
 				<div style={{
 					position:'absolute',
 					left:'50%',
 					transform:'translateX(-50%)',
 					bottom:'12px',
-					padding:'8px 14px',
+					padding:'10px 16px',
 					display:'flex',
 					alignItems:'center',
-					gap:'.75rem',
+					gap:'.9rem',
 					background:'rgba(12,20,34,0.78)',
 					border:'1px solid rgba(140,180,255,.25)',
-					borderRadius:'.85rem',
+					borderRadius:'1rem',
 					boxShadow:'0 4px 18px -6px rgba(0,0,0,.55)',
 					backdropFilter:'blur(10px) saturate(160%)',
-					zIndex:25,
-					pointerEvents:'auto'
+					zIndex:25
 				}}>
-					<div style={{fontSize:'.58rem', letterSpacing:'.5px', color:'#8fb6ff', fontWeight:600}}>
-						Profundidad
-					</div>
-					<input
-						type="range"
-						min={1}
-						max={6}
-						value={depth}
-						onChange={e => setDepth(parseInt(e.target.value, 10))}
-						style={{width:'180px'}}
-					/>
-					<div style={{fontSize:'.6rem', color:'#ffd28a', fontWeight:600, minWidth:'28px', textAlign:'right'}}>
-						{depth}
+					<button
+						onClick={()=>setShowRef(r=>!r)}
+						style={miniBtn(showRef ? '#ffb347' : '#43e9ff')}
+					>
+						{showRef ? 'Ocultar ref.' : 'Ver por referencia'}
+					</button>
+					<button
+						onClick={()=>setSimilarMode(m=>!m)}
+						style={miniBtn(similarMode ? '#ff3fb4' : '#7dff8c')}
+					>
+						{similarMode ? 'Desactivar similares' : 'Mostrar artículos similares'}
+					</button>
+					<div style={{display:'flex', alignItems:'center', gap:'.55rem'}}>
+						<div style={{fontSize:'.58rem', letterSpacing:'.5px', color: similarMode ? '#8fb6ff' : '#587497', fontWeight:600}}>
+							Profundidad
+						</div>
+						<input
+							type="range"
+							min={1}
+							max={6}
+							value={depth}
+							disabled={!similarMode}
+							onChange={e => setDepth(parseInt(e.target.value, 10))}
+							style={{
+								width:'160px',
+								opacity: similarMode ? 1 : .35,
+								cursor: similarMode ? 'pointer' : 'not-allowed'
+							}}
+						/>
+						<div style={{
+							fontSize:'.6rem',
+							color: similarMode ? '#ffd28a' : '#6d5f48',
+							fontWeight:600,
+							minWidth:'28px',
+							textAlign:'right'
+						}}>
+							{depth}
+						</div>
 					</div>
 				</div>
 			</div>
 		</div>
 	);
 };
+
+// Helpers nuevos (colocar antes del export si se desea)
+const miniBtn = (accent: string): React.CSSProperties => ({
+	background:`linear-gradient(130deg, ${accent}, ${accent}44)`,
+	border:'1px solid rgba(255,255,255,.18)',
+	color:'#0d1622',
+	fontSize:'.55rem',
+	fontWeight:600,
+	letterSpacing:'.55px',
+	padding:'.55rem .7rem',
+	borderRadius:'.7rem',
+	cursor:'pointer',
+	display:'inline-flex',
+	alignItems:'center',
+	whiteSpace:'nowrap',
+	boxShadow:'0 4px 14px -6px #000'
+});
 
 export default GraphSunPage;

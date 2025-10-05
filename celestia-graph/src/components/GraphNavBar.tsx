@@ -692,7 +692,6 @@ const GraphNavBar: React.FC = () => {
 	return (
 		<>
 			<header className="graph-nav">
-				<div className="graph-nav-brand">Graph Console</div>
 
 				<form className="graph-nav-form" onSubmit={submitQuick} role="search" aria-label="Búsqueda rápida">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
