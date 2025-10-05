@@ -58,7 +58,7 @@ export interface ChatAPIResponse {
   action: string;
   message: string;
   keywords: string[];
-  data: string;
+  data: any; // antes string
 }
 
 // (Opcional) esquema zod si decides validar (ajusta campos)
@@ -144,11 +144,12 @@ class ApiService {
       }
       if (raw.every(g => g && typeof g === 'object')) {
         return raw.map(g => {
-          const entries = Object.entries(g)
-            .filter(e => !isNaN(Number(e[0])))
-            .sort((a, b) => Number(a[0]) - Number(b[0])) // FIX: se cerró paréntesis faltante
-            .map(e => e[1])
-            .filter(v => typeof v === 'string')
+          const entries = Object
+            .entries(g)
+            .filter(([k]) => !isNaN(Number(k)))
+            .sort((a, b) => Number(a[0]) - Number(b[0])) // FIX: paréntesis correcto
+            .map(([, v]) => v)
+            .filter((v): v is string => typeof v === 'string');
           return entries;
         });
       }
@@ -332,7 +333,7 @@ class ApiService {
   // NUEVO: método chat (restaurado)
   async chat(userInput: string, userId = 'default', signal?: AbortSignal): Promise<ChatAPIResponse> {
     if (!userInput.trim()) {
-      return { action: '', message: '', keywords: [], data: '' };
+      return { action: '', message: '', keywords: [], data: null };
     }
     try {
       const { data } = await axios.post(
@@ -344,7 +345,7 @@ class ApiService {
         action: (data?.action ?? '') + '',
         message: (data?.message ?? '') + '',
         keywords: Array.isArray(data?.keywords) ? data.keywords.filter((k: any) => typeof k === 'string') : [],
-        data: (data?.data ?? '') + ''
+        data: data?.data ?? null // conservar objeto o null
       };
       return resp;
     } catch (e: any) {
@@ -353,7 +354,7 @@ class ApiService {
         action: 'error',
         message: e?.message ? `Error: ${e.message}` : 'Error desconocido',
         keywords: [],
-        data: ''
+        data: null
       };
     }
   }

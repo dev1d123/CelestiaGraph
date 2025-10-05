@@ -9,7 +9,7 @@ type ChatMsg = {
   meta?: {
     action?: string;
     keywords?: string[];
-    data?: string;
+    data?: any; // ahora puede ser objeto o string
   };
 };
 
@@ -150,10 +150,10 @@ const injectStyles = () => {
   .cg-chat-body::-webkit-scrollbar-thumb { background:#284660; border-radius:4px; }
   .cg-msg {
     max-width:80%;
-    padding:.55rem .7rem .6rem;
-    border-radius:.85rem;
-    font-size:.62rem;
-    line-height:1.35;
+    padding:.65rem .8rem .7rem;
+    border-radius:.9rem;
+    font-size:.7rem; /* aumentado */
+    line-height:1.4;
     letter-spacing:.4px;
     position:relative;
     word-break:break-word;
@@ -200,7 +200,7 @@ const injectStyles = () => {
     font:inherit;
     padding:.55rem .65rem;
     border-radius:.6rem;
-    font-size:.62rem;
+    font-size:.68rem;
     letter-spacing:.4px;
     outline:none;
     transition:border-color .25s, background .25s, box-shadow .25s;
@@ -244,7 +244,7 @@ const injectStyles = () => {
     background:linear-gradient(120deg,#1e3550,#264869);
     border:1px solid #2d5d80;
     padding:.3rem .5rem;
-    font-size:.48rem;
+    font-size:.54rem;
     border-radius:.65rem;
     letter-spacing:.4px;
     color:#d0ecff;
@@ -255,23 +255,60 @@ const injectStyles = () => {
     opacity:.55;
     margin-right:2px;
   }
+  .cg-chip.score {
+    background:#233c55;
+    border-color:#355e82;
+  }
   .cg-action {
     margin-top:.4rem;
-    font-size:.5rem;
+    font-size:.56rem;
     font-weight:600;
     letter-spacing:.5px;
     color:#ffc2ec;
   }
-  .cg-data {
-    margin-top:.4rem;
-    font-size:.5rem;
-    padding:.45rem .55rem;
+  .cg-data, .cg-data-block {
+    margin-top:.5rem;
+    font-size:.58rem;
+    line-height:1.35;
+  }
+  .cg-data-block {
     background:#0f1e30;
     border:1px solid #253d53;
-    border-radius:.55rem;
-    white-space:pre-wrap;
-    max-height:140px;
-    overflow:auto;
+    padding:.6rem .65rem .65rem;
+    border-radius:.7rem;
+  }
+  .cg-subtitle {
+    font-weight:600;
+    font-size:.6rem;
+    margin:0 0 .4rem;
+    letter-spacing:.5px;
+    color:#8fd6ff;
+  }
+  .cg-articles {
+    display:flex;
+    flex-direction:column;
+    gap:.55rem;
+    margin-top:.4rem;
+  }
+  .cg-article {
+    background:linear-gradient(125deg,#13283b,#102232);
+    border:1px solid #1f3a53;
+    padding:.55rem .6rem .55rem;
+    border-radius:.6rem;
+  }
+  .cg-article-title {
+    font-size:.58rem;
+    font-weight:600;
+    margin:0 0 .25rem;
+    color:#d8ecff;
+  }
+  .cg-article-meta {
+    font-size:.48rem;
+    opacity:.65;
+    display:flex;
+    gap:.6rem;
+    flex-wrap:wrap;
+    letter-spacing:.4px;
   }
   @media (max-width:520px) {
     .cg-chat-fab {
@@ -332,7 +369,7 @@ const ChatBotWidget: React.FC = () => {
       meta: {
         action: resp.action || undefined,
         keywords: resp.keywords && resp.keywords.length ? resp.keywords : undefined,
-        data: resp.data ? resp.data : undefined
+        data: resp.data ?? undefined
       }
     };
     setMessages(m => [...m, botMsg]);
@@ -389,10 +426,45 @@ const ChatBotWidget: React.FC = () => {
                     {msg.meta.keywords.map(k => <span key={k} className="cg-chip">{k}</span>)}
                   </div>
                 )}
-                {msg.meta?.data && (
+                {/* NUEVO: data estructurada */}
+                {msg.meta?.data && typeof msg.meta.data === 'object' && !Array.isArray(msg.meta.data) && (
+                  <div className="cg-data-block">
+                    {Array.isArray(msg.meta.data.keywords) && msg.meta.data.keywords.length > 0 && (
+                      <>
+                        <h5 className="cg-subtitle">Keywords detectadas</h5>
+                        <div className="cg-keywords">
+                          {msg.meta.data.keywords.map((k: string) => (
+                            <span key={k} className="cg-chip">{k}</span>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    {Array.isArray(msg.meta.data.articles) && msg.meta.data.articles.length > 0 && (
+                      <>
+                        <h5 className="cg-subtitle" style={{marginTop:'.75rem'}}>Artículos sugeridos</h5>
+                        <div className="cg-articles">
+                          {msg.meta.data.articles.slice(0, 8).map((a: any, i: number) => (
+                            <div key={a.pmc_id || i} className="cg-article">
+                              <p className="cg-article-title">{a.title || '(sin título)'}</p>
+                              <div className="cg-article-meta">
+                                {a.pmc_id && <span>ID: {a.pmc_id}</span>}
+                                {a.cluster_id && <span>Cluster: {a.cluster_id}</span>}
+                                {typeof a.relevance_score === 'number' && (
+                                  <span>Score: {a.relevance_score.toFixed(3)}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {/* fallback si data es string */}
+                {msg.meta?.data && typeof msg.meta.data === 'string' && (
                   <div className="cg-data">
-                    {msg.meta.data.length > 650
-                      ? msg.meta.data.slice(0, 650) + '...'
+                    {msg.meta.data.length > 800
+                      ? msg.meta.data.slice(0, 800) + '...'
                       : msg.meta.data}
                   </div>
                 )}
