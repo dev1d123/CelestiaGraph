@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import Universe from '../three/Universe';
+import type { UniverseRef } from '../three/Universe';
 
 import '../styles/spaceBackground.css';
 
@@ -13,6 +14,8 @@ const GraphPage: React.FC = () => {
 	const NAVBAR_HEIGHT = 56;
 	const GRAPH_NAVBAR_HEIGHT = 50;
 	const TOTAL_NAV_HEIGHT = NAVBAR_HEIGHT + GRAPH_NAVBAR_HEIGHT; // renombrado
+	const universeRef = useRef<UniverseRef | null>(null);
+	const themes = ['Tema: A', 'Tema: B', 'Tema: C', 'Tema: D', 'Tema: E']; // nombres EXACTOS (coinciden con Universe)
 
 	const handleSunSelect = (data: { galaxy: string; sunIndex: number }) => {
 		setPendingSun(data);
@@ -27,6 +30,10 @@ const GraphPage: React.FC = () => {
 	};
 
 	const cancelGo = () => setPendingSun(null);
+
+	const handleFocusGalaxy = (name: string) => {
+		universeRef.current?.focusGalaxy(name);
+	};
 
 	return (
 		<div className={`space-wrapper ${transitioning ? 'jump-out' : ''}`}>
@@ -58,9 +65,81 @@ const GraphPage: React.FC = () => {
 						height: `calc(100vh - ${TOTAL_NAV_HEIGHT}px)`, // actualizado
 						marginTop: 0, // quitado desplazamiento duplicado
 						overflow: 'hidden'
-					}}>
-						 <Universe autoRotate onSunSelect={handleSunSelect} />
-						 {pendingSun && !transitioning && (
+						}}>
+						{/* Sidebar de galaxias */}
+						<div style={{
+							position:'absolute',
+							top:0,
+							left:0,
+							height:'100%',
+							width:'190px',
+							padding:'0.75rem .85rem',
+							display:'flex',
+							flexDirection:'column',
+							gap:'.65rem',
+							background:'linear-gradient(165deg, rgba(15,22,35,.82), rgba(10,15,25,.9))',
+							backdropFilter:'blur(10px)',
+							borderRight:'1px solid rgba(255,255,255,.08)',
+							zIndex:25
+						}}>
+							<h4 style={{
+								margin:'0 0 .25rem',
+								fontSize:'.7rem',
+								letterSpacing:'1.2px',
+								fontWeight:600,
+								color:'#ffcf7d',
+								textTransform:'uppercase'
+							}}>Índice</h4>
+							<ul style={{
+								listStyle:'none',
+								margin:0,
+								padding:0,
+								flex:1,
+								overflowY:'auto',
+								display:'flex',
+								flexDirection:'column',
+								gap:'.45rem'
+							}}>
+								{themes.map(t => (
+									<li key={t} style={{
+										display:'flex',
+										alignItems:'center',
+										justifyContent:'space-between',
+										gap:'.4rem',
+										background:'rgba(255,255,255,0.03)',
+										padding:'.45rem .55rem',
+										borderRadius:'.55rem',
+										border:'1px solid rgba(255,255,255,0.06)'
+									}}>
+										<span style={{fontSize:'.65rem', letterSpacing:'.4px', color:'#e3f0ff'}}>{t}</span>
+										<button
+											onClick={() => handleFocusGalaxy(t)}
+											style={{
+												border:'none',
+												background:'linear-gradient(135deg,#ffb347,#ff8a3d)',
+												color:'#1a1205',
+												fontSize:'.6rem',
+												fontWeight:600,
+												padding:'.35rem .55rem',
+												borderRadius:'.45rem',
+												cursor:'pointer',
+												letterSpacing:'.5px',
+												boxShadow:'0 2px 10px -4px rgba(0,0,0,.55)'
+											}}
+										>Ir</button>
+									</li>
+								))}
+							</ul>
+						</div>
+						{/* Universo (agregado ref y prop galaxies) */}
+						<Universe
+							ref={universeRef}
+							galaxies={themes}
+							autoRotate
+							onSunSelect={handleSunSelect}
+						/>
+						{/* ...existing overlays (pendingSun modal / transitioning effect)... */}
+						{pendingSun && !transitioning && (
 							<div style={{
 								position:'absolute',
 								inset:0,

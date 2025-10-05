@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as dat from 'dat.gui';
@@ -8,6 +8,11 @@ interface UniverseProps {
 	autoRotate?: boolean;
 	background?: string;
 	onSunSelect?: (data: { galaxy: string; sunIndex: number }) => void;
+	galaxies?: string[];
+}
+
+export interface UniverseRef {
+	focusGalaxy: (name: string) => void;
 }
 
 interface GalaxyConfig {
@@ -113,7 +118,13 @@ const sunParams: SunParams = {
 let sunGUI: dat.GUI | null = null;
 let sunFolderAdded = false;
 
-const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'transparent', onSunSelect }) => {
+const Universe = forwardRef<UniverseRef, UniverseProps>(({
+	autoRotate = true,
+	background = 'transparent',
+	onSunSelect,
+	galaxies = ['Tema A', 'Tema B'],
+	...rest
+}, ref) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -122,6 +133,8 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 	const controlsRef = useRef<OrbitControls | null>(null);
 	const animationIdRef = useRef<number | null>(null);
 	const labelLayerRef = useRef<HTMLDivElement | null>(null);
+	const galaxyNodesRef = useRef<Record<string, { group: THREE.Object3D; center: THREE.Vector3; radius: number }>>({});
+	const focusGalaxyRef = useRef<(center: THREE.Vector3, radius: number) => void>(() => {});
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -275,7 +288,8 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 				center: cfg.position.clone(),
 				labelDiv: div,
 				radius: cfg.radius
-			});
+				});
+			galaxyNodesRef.current[cfg.label] = { group, center: cfg.position.clone(), radius: cfg.radius };
 		};
 
 		galaxyConfigs.forEach(cfg => createGalaxy(cfg));
@@ -401,6 +415,7 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 			camAnimT = 0;
 			camAnimActive = true;
 		};
+		focusGalaxyRef.current = (center, radius) => startCameraFocus(center, radius);
 
 		// Picking
 		const raycaster = new THREE.Raycaster();
@@ -724,6 +739,14 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 		};
 	}, [autoRotate, background, onSunSelect]);
 
+	useImperativeHandle(ref, () => ({
+		focusGalaxy: (name: string) => {
+			const entry = galaxyNodesRef.current[name];
+			if (!entry) return;
+			focusGalaxyRef.current(entry.center, entry.radius);
+		}
+	}), []);
+
 	return (
 		<div ref={containerRef} className="three-sun" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
 			<canvas
@@ -754,6 +777,6 @@ const Universe: React.FC<UniverseProps> = ({ autoRotate = true, background = 'tr
 			/>
 		</div>
 	);
-};
+});
 
 export default Universe;
