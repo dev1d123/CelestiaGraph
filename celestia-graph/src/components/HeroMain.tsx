@@ -474,32 +474,32 @@ export const HeroMain: React.FC = () => {
 			<div className="hero-main-container">
 				<div className="hero-main-img">
 					<div className="hero-main-img-inner">
-						<img src="/img/hero1.jpeg" alt="Celestia Graph Hero" />
+						<img src="/img/hero1.jpeg" alt="Celestia Search Hero" />
 					</div>
 				</div>
 				<div className="hero-main-info">
 					<h1 className="hero-main-title">
-						Explora el universo modular de Celestia Graph
+						Explore the modular universe of Celestia Search
 					</h1>
 					<p className="hero-main-desc">
-						Mapeamos entidades, bloques y relaciones emergentes dentro del ecosistema modular
-						para que puedas detectar patrones, anomalías y dinámicas de propagación de datos
-						en segundos. Visualización impulsada por rendimiento: canvas, proyección espacial,
-						animaciones adaptativas y una capa interactiva que responde a tu movimiento.
+						We map entities, blocks, and emerging semantic relationships across the modular ecosystem
+						so you can detect patterns, anomalies, and identify areas of knowledge in seconds.
+						Using AI, articles are clustered based on labels, and related topics are suggested.
+
 						<br /><br />
 						<span style={{ color: '#ff3fb4' }}>
-							Esto no es solo un visor: es un laboratorio dinámico de exploración on-chain.
+							This is not just a viewer — it’s a dynamic laboratory for on-chain research and knowledge synthesis.
 						</span>
 					</p>
+
 					<div className="hero-main-badges">
-						<span className="hero-badge">Grafo Dinámico</span>
-						<span className="hero-badge">Análisis Modular</span>
-						<span className="hero-badge">Stream Tiempo Real</span>
-						<span className="hero-badge">Interactividad Parallax</span>
+						<span className="hero-badge">Explore research topics</span>
+						<span className="hero-badge">Find similar articles</span>
+						<span className="hero-badge">Use an AI research assistant</span>
+						<span className="hero-badge">Generate a PDF report</span>
 					</div>
 					<div className="hero-main-cta">
-						<button className="hero-main-cta-btn">Probar Demo</button>
-						<button className="hero-main-cta-btn secondary">Ver Documentación</button>
+						<button className="hero-main-cta-btn">Open repository</button>
 					</div>
 				</div>
 			</div>

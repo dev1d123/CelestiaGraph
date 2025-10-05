@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const injectInfoStyles = () => {
 	if (document.getElementById('info-box-styles')) return;
@@ -305,7 +306,7 @@ if (!document.getElementById(extraStylesId)) {
 		border:1px solid #ffffff10;
 		border-radius:.75rem;
 		backdrop-filter: blur(4px);
-		max-width:80%;
+		max-width:100%;
 		line-height:1.2;
 		font-weight:600;
 		font-size:.7rem;
@@ -318,65 +319,230 @@ if (!document.getElementById(extraStylesId)) {
 	document.head.appendChild(s);
 }
 
-export const InformationBox: React.FC = () => {
-	useEffect(() => {
-		injectInfoStyles();
-	}, []);
+const InformationBox: React.FC = () => {
+	const navigate = useNavigate();
+
+	const goClassic = () => navigate('/classic');
+	const goGraph = () => navigate('/graph');
+	const goChat = () => {
+		// if chatbot widget listens to a custom event
+		const ev = new CustomEvent('open-chatbot');
+		window.dispatchEvent(ev);
+		// fallback: scroll to top (widget likely fixed)
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	};
 
 	return (
-		<section className="info-box-wrap" id="about">
-			<div className="info-left">
-				<h2>¿Qué es Celestia Search?</h2>
-				<p>
-					Celestia Search es un motor híbrido de exploración modular que combina indexación
-					semántica, consultas estructuradas y visualización relacional. Integra un pipeline
-					de ingestión que normaliza bloques, transacciones y entidades; genera proyecciones
-					de grafo y expone capas de búsqueda: clásica (filtrado / texto) y gráfica (navegación
-					contextual y expansión de nodos). El objetivo: transformar datos crudos en
-					inteligencia navegable, detectar patrones emergentes y ofrecer una experiencia
-					interactiva donde cada relación cuenta.
+		<section
+			style={{
+				maxWidth: '95%',
+				margin: '0 auto',
+				padding: '3rem 1.4rem 4rem',
+				display: 'flex',
+				flexDirection: 'column',
+				gap: '2.4rem',
+				// DARK MODE BACKGROUND (nuevo)
+				background: 'linear-gradient(160deg,#050b12 0%,#08131e 55%,#0d1f33 100%)',
+				position: 'relative',
+				borderTop: '1px solid #0f2a3d',
+				borderBottom: '1px solid #0f2a3d',
+				boxShadow: '0 40px 80px -60px #000 inset, 0 0 0 1px #0b2234',
+				borderRadius: '0 0 1.4rem 1.4rem'
+			}}
+		>
+			{/* overlay suave luminoso (nuevo) */}
+			<div style={{
+				position:'absolute',
+				inset:0,
+				pointerEvents:'none',
+				background:
+					'radial-gradient(circle at 18% 24%,rgba(67,233,255,.08),transparent 60%),' +
+					'radial-gradient(circle at 82% 72%,rgba(255,63,180,.07),transparent 65%)'
+			}} />
+			<header style={{ maxWidth: '860px', position:'relative', zIndex:1 }}>
+				<h2 style={{
+					margin: 0,
+					fontSize: '2.1rem',
+					lineHeight: 1.15,
+					letterSpacing: '.5px',
+					background: 'linear-gradient(90deg,#43e9ff,#ff3fb4)',
+					WebkitBackgroundClip: 'text',
+					color: 'transparent'
+				}}>
+					NASA Scholarly Knowledge Exploration Platform
+				</h2>
+				<p style={{
+					margin: '1rem 0 0',
+					fontSize: '.95rem',
+					lineHeight: 1.55,
+					color: '#c7d8ec',
+					letterSpacing: '.35px',
+					maxWidth: '760px'
+				}}>
+					This tool ingests NASA–related academic articles and transforms them into an interactive knowledge space.  
+					You can run a classical (Google Scholar style) query, explore a planetary ring graph that clusters articles
+					by thematic labels, surface the most semantically similar publications, and use an AI assistant to craft
+					research directions or synthesize topic overviews.
 				</p>
-				<p>
-					Su arquitectura desacoplada permite evolucionar módulos de parsing, cache caliente,
-					stream en tiempo real y render adaptativo para mantener fluidez incluso con grandes
-					volúmenes. Estamos construyendo la interfaz que convierte la complejidad modular en
-					claridad visual y acción inmediata.
-				</p>
-			</div>
-			<div className="info-right">
-				<article className="feature-card" id="graph-search">
-					<span className="side-accent" />
-					<FeatureImage base="graphSearch" alt="Vista Graph Search" />
-					<h3>Graph Search</h3>
-					<p>
-						Navega relaciones vivas entre entidades. Expande nodos progresivamente,
-						aplica filtros dinámicos y observa la propagación temporal. Ideal para
-						descubrir hubs, outliers y clústeres estructurales.
-					</p>
-					<div className="feature-actions">
-						<button className="feature-btn" onClick={() => (location.hash = '#graph-search')}>
-							Probar ahora
-						</button>
-					</div>
-				</article>
+			</header>
 
-				<article className="feature-card" id="classic-search">
-					<span className="side-accent" />
-					<FeatureImage base="classicSearch" alt="Vista Classic Search" />
-					<h3>Classic Search</h3>
-					<p>
-						Búsqueda directa y precisa: filtra por hashes, alturas, tipos y atributos clave.
-						Ideal para auditoría rápida, verificación puntual y flujo lineal de investigación.
-					</p>
-					<div className="feature-actions">
-						<button className="feature-btn" onClick={() => (location.hash = '#classic-search')}>
-							Probar ahora
-						</button>
-					</div>
-				</article>
+			<div
+				style={{
+					display: 'grid',
+					gap: '1.4rem',
+					gridTemplateColumns: 'repeat(auto-fit,minmax(270px,1fr))',
+					position:'relative',
+					zIndex:1
+				}}
+			>
+				<FeatureCard
+					title="Classical Search"
+					desc="Boolean / keyword filtering similar to Google Scholar. Combine required terms, exact phrases, and excluded tokens to refine NASA literature."
+					bullet={[
+						'AND multi‑token matching',
+						'Exact phrase constraint',
+						'Exclude noisy terms',
+						'Sorted by citations & year'
+					]}
+					cta="Try now"
+					onClick={goClassic}
+				/>
+				<FeatureCard
+					title="Graph Search"
+					desc="Orbital ring visualization groups articles by topic layers and highlights cross‑similarity. Inspect clusters, hover to reveal metadata, and pivot quickly."
+					bullet={[
+						'Topic ring clustering',
+						'Similarity surfacing',
+						'Interactive 3D orbit',
+						'Semantic exploration'
+					]}
+					cta="Explore graph"
+					onClick={goGraph}
+				/>
+				<FeatureCard
+					title="AI Research Assistant"
+					desc="Chat interface to suggest investigation angles, summarize clusters, and draft structured topic maps from the NASA corpus."
+					bullet={[
+						'Generate topic outlines',
+						'Summarize article sets',
+						'Refine research queries',
+						'Guide next steps'
+					]}
+					cta=""
+					disabled
+				/>
+				<FeatureCard
+					title="Report Export"
+					desc="Assemble selected articles and AI summaries into a consolidated PDF research brief for citation-ready referencing."
+					bullet={[
+						'Curate article list',
+						'Embed AI synthesis',
+						'Compact visual layout',
+						'Export to PDF'
+					]}
+					cta=""
+					disabled
+				/>
 			</div>
+
+			<footer style={{ fontSize: '.65rem', letterSpacing: '.4px', opacity: .55, textAlign: 'center', position:'relative', zIndex:1 }}>
+				Dataset focus: NASA related scholarly / technical documents (demo subset). Feature set evolving.
+			</footer>
 		</section>
 	);
 };
+
+// Reusable feature card
+interface FCProps {
+	title: string;
+	desc: string;
+	bullet: string[];
+	cta: string;
+	onClick?: () => void;
+	disabled?: boolean;
+}
+
+const FeatureCard: React.FC<FCProps> = ({ title, desc, bullet, cta, onClick, disabled }) => (
+	<div style={{
+		position: 'relative',
+		display: 'flex',
+		flexDirection: 'column',
+		gap: '.75rem',
+		padding: '1.25rem 1.15rem 1.35rem',
+		background: 'linear-gradient(155deg,#101b2a,#0c1522)',
+		border: '1px solid #1e3044',
+		borderRadius: '1rem',
+		boxShadow: '0 10px 28px -14px #000'
+	}}>
+		<h3 style={{
+			margin: 0,
+			fontSize: '1rem',
+			letterSpacing: '.6px',
+			color: '#e6f2ff'
+		}}>{title}</h3>
+		<p style={{
+			margin: 0,
+			fontSize: '.7rem',
+			lineHeight: 1.45,
+			color: '#b0c6dc',
+			letterSpacing: '.35px',
+			flexGrow: 1
+		}}>{desc}</p>
+		<ul style={{
+			listStyle: 'none',
+			margin: '.2rem 0 .1rem',
+			padding: 0,
+			display: 'flex',
+			flexDirection: 'column',
+			gap: '.35rem'
+		}}>
+			{bullet.map(b => (
+				<li key={b} style={{ fontSize: '.62rem', color: '#8fb6ff', letterSpacing: '.4px', display: 'flex', gap: '.4rem' }}>
+					<span style={{
+						width: '6px',
+						height: '6px',
+						background: 'linear-gradient(120deg,#43e9ff,#ff3fb4)',
+						borderRadius: '50%',
+						marginTop: '4px',
+						flexShrink: 0
+					}} />
+					{b}
+				</li>
+			))}
+		</ul>
+		<button
+			onClick={!disabled ? onClick : undefined}
+			disabled={disabled}
+			style={{
+				marginTop: '.4rem',
+				alignSelf: 'flex-start',
+				background: disabled
+					? 'linear-gradient(120deg,#2c3d52,#182633)'
+					: 'linear-gradient(120deg,#43e9ff,#ff3fb4 55%,#b4ff4d)',
+				backgroundSize: '180% 100%',
+				border: '1px solid rgba(140,180,255,.25)',
+				color: disabled ? '#6e859a' : '#0d1622',
+				fontSize: '.62rem',
+				fontWeight: 700,
+				letterSpacing: '.6px',
+				padding: '.55rem .95rem',
+				borderRadius: '.65rem',
+				cursor: disabled ? 'not-allowed' : 'pointer',
+				transition: 'background-position .6s, transform .35s',
+				boxShadow: disabled
+					? '0 0 0 0 #000'
+					: '0 6px 22px -10px #43e9ff66'
+			}}
+			onMouseEnter={e => {
+				if (!disabled) (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '100% 0';
+			}}
+			onMouseLeave={e => {
+				if (!disabled) (e.currentTarget as HTMLButtonElement).style.backgroundPosition = '0 0';
+			}}
+		>
+			{cta}
+		</button>
+	</div>
+);
 
 export default InformationBox;
