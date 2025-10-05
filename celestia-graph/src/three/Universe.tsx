@@ -46,16 +46,22 @@ const colorPairs: Array<[number, number]> = [
 ];
 
 const sunParams: SunParams = {
-	sunSize: 0.18, // antes 0.35
-	glowIntensity: 1.45, // reducido (antes 2.2)
+	sunSize: 0.10, // reducido (antes 0.18)
+	glowIntensity: 1.3, // ligera reducción
 	orbitSpeed: 0.4,
-	rotationSpeed: 0.8,
+	rotationSpeed: 0.7,
 	coreColor: 0xffd277,
 	glowColor: 0xffaa33,
 };
 
 let sunGUI: dat.GUI | null = null;
 let sunFolderAdded = false;
+
+const MAX_PARTICLES_PER_GALAXY = 3200;               // nuevo (cap duro por galaxia)
+const GLOBAL_PARTICLE_BUDGET = 95000;                // límite total
+const LABEL_UPDATE_SKIP = 2;                         // actualizar labels cada N frames
+// cache de materiales (reduce objetos)
+const pointsMaterialCache = new Map<string, THREE.PointsMaterial>();
 
 const Universe = forwardRef<UniverseRef, UniverseProps>(({
 	autoRotate = true,
@@ -91,7 +97,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 
 		// Sutil nebulosa / ambient
 		const fogColor = new THREE.Color(0x03060a);
-		scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.035);
+		scene.fog = new THREE.FogExp2(fogColor.getHex(), 0.02); // densidad reducida
 
 		// Cámara
 		const width = container.clientWidth || window.innerWidth;
@@ -108,8 +114,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		scene.add(hemi);
 
 		// Renderer
-		const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+		const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75)); // ligero clamp
 		renderer.setSize(width, height, false);
 		renderer.setClearColor(0x000000, 0);
 		rendererRef.current = renderer;
@@ -144,7 +150,16 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		// renamed runtime collection
 		const runtimeGalaxies: GalaxyRuntime[] = [];
 
+		let totalParticles = 0; // acumulador global
+
 		const createGalaxy = (cfg: GalaxyConfig) => {
+			// no crear si excede presupuesto global
+			const remaining = Math.max(0, GLOBAL_PARTICLE_BUDGET - totalParticles);
+			if (remaining <= 0) return;
+
+			// ajustar count si supera restante
+			if (cfg.count > remaining) cfg.count = remaining;
+
 			const positions = new Float32Array(cfg.count * 3);
 			const colors = new Float32Array(cfg.count * 3);
 			const colorInside = new THREE.Color(cfg.insideColor);
@@ -172,19 +187,26 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				colors[i3 + 2] = currentColor.b;
 			}
 
+			totalParticles += cfg.count;
+
 			const geometry = new THREE.BufferGeometry();
 			geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 			geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-			const material = new THREE.PointsMaterial({
-				size: cfg.size,
-				sizeAttenuation: true,
-				depthWrite: false,
-				blending: THREE.AdditiveBlending,
-				transparent: true,
-				opacity: 0.95,
-				vertexColors: true,
-			});
+			const matKey = `${cfg.insideColor}_${cfg.outsideColor}_${cfg.size}`;
+			let material = pointsMaterialCache.get(matKey);
+			if (!material) {
+				material = new THREE.PointsMaterial({
+					size: cfg.size,
+					sizeAttenuation: true,
+					depthWrite: false,
+					blending: THREE.AdditiveBlending,
+					transparent: true,
+					opacity: 0.9,
+					vertexColors: true
+				});
+				pointsMaterialCache.set(matKey, material);
+			}
 
 			const points = new THREE.Points(geometry, material);
 			const group = new THREE.Group();
@@ -248,11 +270,13 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				Math.sin(angle) * ringRadius
 			);
 			const articleCount = (galaxyArticles?.[label]?.length || 0);
-			const baseCount = 4500 + Math.min(6000, articleCount * 350); // scale star count by #articles
+			// nuevo cálculo: escala suave + límites
+			const scaled = 1200 + Math.sqrt(articleCount) * 220;
+			const baseCount = Math.min(MAX_PARTICLES_PER_GALAXY, Math.floor(scaled));
 			return {
 				label,
 				count: baseCount,
-				radius: 1.8 + Math.min(3.2, articleCount * 0.12),
+				radius: 1.6 + Math.min(2.6, Math.sqrt(articleCount) * 0.22),
 				branches: 5 + (i % 4),
 				spin: 0.9 + (i % 3) * 0.15,
 				randomness: 0.10 + (i % 5) * 0.01,
@@ -281,7 +305,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		const suns: SunRuntime[] = [];
 		let hoveredSun: SunRuntime | null = null;
 		let paused = false;
-		let hoverRing: THREE.Mesh | null = null; // anillo decorativo
+		let hoverRing: THREE.Mesh | null = null; // queda sin uso (no se creará ya)
 
 		const sunLayer = document.createElement('div');
 		Object.assign(sunLayer.style, {
@@ -299,22 +323,22 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			// estilos visuales movidos a clase .three-sun-tooltip
 		});
 
-		const createSunMesh = () => {
-			const coreGeo = new THREE.SphereGeometry(sunParams.sunSize, 28, 28);
+		const createSunMesh = (coreCol: THREE.Color, glowCol: THREE.Color) => {
+			const coreGeo = new THREE.SphereGeometry(sunParams.sunSize, 24, 24);
 			const coreMat = new THREE.MeshStandardMaterial({
-				color: sunParams.coreColor,
-				emissive: sunParams.coreColor,
-				emissiveIntensity: 1.1,
-				roughness: 0.3,
+				color: coreCol,
+				emissive: coreCol,
+				emissiveIntensity: 0.9,
+				roughness: 0.4,
 				metalness: 0.05
 			});
 			const core = new THREE.Mesh(coreGeo, coreMat);
 
-			const glowGeo = new THREE.SphereGeometry(sunParams.sunSize * sunParams.glowIntensity, 28, 28);
+			const glowGeo = new THREE.SphereGeometry(sunParams.sunSize * sunParams.glowIntensity, 20, 20);
 			const glowMat = new THREE.MeshBasicMaterial({
-				color: sunParams.glowColor,
+				color: glowCol,
 				transparent: true,
-				opacity: 0.18,
+				opacity: 0.14,
 				blending: THREE.AdditiveBlending,
 				depthWrite: false
 			});
@@ -322,20 +346,32 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			return { core, glow };
 		};
 
+		const colorFromIndex = (i: number, total: number) => {
+			const hue = (i / Math.max(total,1)) * 360;
+			return new THREE.Color(`hsl(${hue},72%,55%)`);
+		};
+
 		const createSunsForGalaxy = (g: GalaxyRuntime) => {
 			const articles = galaxyArticles[g.labelDiv.textContent || ''] || [];
+			const total = articles.length;
+			const golden = 2.39996323; // ángulo áureo para dispersión
+			const radialMax = g.radius * 0.85;
+			const base = g.radius * 0.22;
+			const step = (radialMax - base) / Math.max(total, 1);
+
 			articles.forEach((title, idx) => {
-				const { core, glow } = createSunMesh();
+				const coreColor = colorFromIndex(idx, total);
+				const glowColor = coreColor.clone().offsetHSL(0, -0.05, 0.1);
+				const { core, glow } = createSunMesh(coreColor, glowColor);
 				const group = new THREE.Group();
 				group.add(core);
 				group.add(glow);
 
-				// Nuevo: órbita estrictamente dentro del radio de la galaxia
-				const orbitRadius = g.radius * (0.15 + Math.random() * 0.75); // entre 15% y 90% del radio
-				const angle = Math.random() * Math.PI * 2;
+				const orbitRadius = base + step * idx;
+				const angle = idx * golden;
 				group.position.set(
 					g.center.x + Math.cos(angle) * orbitRadius,
-					g.center.y + (Math.random() * 0.3 - 0.15) * (g.radius * 0.25),
+					g.center.y + Math.sin(idx * 0.37) * 0.25,
 					g.center.z + Math.sin(angle) * orbitRadius
 				);
 
@@ -343,7 +379,12 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 
 				const tooltip = document.createElement('div');
 				tooltip.className = 'three-sun-tooltip';
-				Object.assign(tooltip.style, sunTooltipStyle());
+				Object.assign(tooltip.style, {
+					position: 'absolute',
+					transform: 'translate(-50%, -50%)',
+					opacity: '0',
+					transition: 'opacity .25s'
+				});
 				tooltip.innerHTML = `
 					<strong>${g.labelDiv.textContent || 'SUN'}</strong><br/>
 					<span class="meta">Sol #${idx + 1}</span><br/>
@@ -357,7 +398,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					glow,
 					angle,
 					orbitRadius,
-					orbitSpeed: sunParams.orbitSpeed * (0.4 + Math.random() * 0.9),
+					orbitSpeed: sunParams.orbitSpeed * (0.6 + (idx % 5) * 0.15),
 					galaxyCenter: g.center.clone(),
 					tooltip,
 					article: title
@@ -456,56 +497,25 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			if (intersects.length) {
 				const obj = intersects[0].object as THREE.Mesh;
 				const sun = suns.find(s => s.core === obj);
-				if (sun) {
-					if (hoveredSun !== sun) {
-						if (hoveredSun) {
-							hoveredSun.tooltip.style.opacity = '0';
-							hoveredSun.tooltip.classList.remove('active');
-							hoveredSun.tooltip.style.transform = 'translate(-50%, -50%) scale(1)';
-						}
-						hoveredSun = sun;
-						paused = true;
-						sun.tooltip.style.opacity = '1';
-						sun.tooltip.classList.add('active');
-						sun.tooltip.style.transform = 'translate(-50%, -50%) scale(1.1)';
-						// crear anillo si no existe
-						if (!hoverRing) {
-							const ringGeo = new THREE.RingGeometry(sunParams.sunSize * 1.6, sunParams.sunSize * 2.1, 64);
-							const ringMat = new THREE.MeshBasicMaterial({
-								color: 0xffd665,
-								transparent: true,
-								opacity: 0.55,
-								side: THREE.DoubleSide,
-								blending: THREE.AdditiveBlending,
-								depthWrite: false
-							});
-							hoverRing = new THREE.Mesh(ringGeo, ringMat);
-							scene.add(hoverRing);
-						}
-						hoverRing.position.copy(sun.group.position);
-					}
+				if (sun && hoveredSun !== sun) {
+					if (hoveredSun) hoveredSun.tooltip.style.opacity = '0';
+					hoveredSun = sun;
+					sun.tooltip.style.opacity = '1';
 				}
 			} else {
-				if (hoveredSun) {
-					hoveredSun.tooltip.style.opacity = '0';
-					hoveredSun.tooltip.classList.remove('active');
-					hoveredSun.tooltip.style.transform = 'translate(-50%, -50%) scale(1)';
-					hoveredSun = null;
-				}
-				if (hoverRing) {
-					scene.remove(hoverRing);
-					hoverRing.geometry.dispose();
-					(hoverRing.material as THREE.Material).dispose();
-					hoverRing = null;
-				}
-				paused = false;
+				if (hoveredSun) hoveredSun.tooltip.style.opacity = '0';
+				hoveredSun = null;
 			}
 		};
 		canvas.addEventListener('pointermove', handlePointerMove);
 
 		const clock = new THREE.Clock();
 
+		// throttle labels
+		let frameCount = 0;
 		const updateLabels = () => {
+			frameCount++;
+			if (frameCount % LABEL_UPDATE_SKIP !== 0) return;
 			if (!camera) return;
 			const width = container.clientWidth;
 			const height = container.clientHeight;
@@ -551,15 +561,10 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		};
 
 		const tick = () => {
-			const elapsed = clock.getElapsedTime();
-			if (autoRotate && !paused) { // añadido !paused
-				// Rotación unificada (misma dirección/velocidad para todas)
+			if (autoRotate && !paused) {
 				const galaxyRotationSpeed = 0.0012;
-				runtimeGalaxies.forEach(g => {
-					g.group.rotation.y += galaxyRotationSpeed;
-				});
+				runtimeGalaxies.forEach(g => { g.group.rotation.y += galaxyRotationSpeed; });
 			}
-			// Animación de cámara
 			if (camAnimActive) {
 				camAnimT += 0.025;
 				const t = camAnimT >= 1 ? 1 : camAnimT;
@@ -568,33 +573,17 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				controls.target.lerpVectors(targetFrom, targetTo, eased);
 				if (t === 1) camAnimActive = false;
 			}
-			if (!paused && autoRotate) {
-				// usar misma velocidad/dirección para la rotación propia de los soles
+			if (autoRotate) {
 				const galaxyRotationSpeed = 0.0012;
 				suns.forEach(s => {
 					s.angle += s.orbitSpeed * 0.002 * sunParams.orbitSpeed;
 					s.group.position.set(
 						s.galaxyCenter.x + Math.cos(s.angle) * s.orbitRadius,
-						s.galaxyCenter.y + Math.sin(s.angle * 0.35) * 0.4,
+						s.galaxyCenter.y + Math.sin(s.angle * 0.3) * 0.3,
 						s.galaxyCenter.z + Math.sin(s.angle) * s.orbitRadius
 					);
 					s.core.rotation.y += galaxyRotationSpeed;
-					s.glow.rotation.y += galaxyRotationSpeed;
 				});
-			}
-			// Efectos dinámicos de hover
-			if (hoveredSun) {
-				const t = performance.now() * 0.001;
-				if (hoverRing) {
-					const pulse = 1 + Math.sin(t * 4) * 0.12;
-					hoverRing.scale.setScalar(pulse);
-					(hoverRing.material as THREE.MeshBasicMaterial).opacity = 0.35 + (Math.sin(t * 6) * 0.25 + 0.25);
-					hoverRing.lookAt(camera.position);
-				}
-				// pulso del glow
-				const glowMat = hoveredSun.glow.material as THREE.MeshBasicMaterial;
-				glowMat.opacity = 0.28 + (Math.sin(t * 5) * 0.1 + 0.1);
-				hoveredSun.core.rotation.y += 0.0012; // misma velocidad que galaxia
 			}
 			controls.update();
 			updateLabels();
@@ -624,20 +613,22 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 		};
 		window.addEventListener('resize', onWindowResize);
 
-		if (!sunGUI) {
+		// omitir GUI si demasiadas galaxias
+		if (!sunGUI && galaxyLabels.length <= 25) {
 			sunGUI = new dat.GUI();
 			sunGUI.domElement.style.zIndex = '45';
 			sunGUI.domElement.style.position = 'fixed';
 			sunGUI.domElement.style.bottom = '8px';
 			sunGUI.domElement.style.left = '8px';
 		}
-		if (!sunFolderAdded) {
+		// ...existing code sunFolderAdded block (proteger con sunGUI)...
+		if (sunGUI && !sunFolderAdded && galaxyLabels.length <= 25) {
 			const sf = sunGUI.addFolder('suns');
 			sf.add(sunParams, 'sunSize').min(0.1).max(1).step(0.01).onFinishChange(() => {
 				suns.forEach(s => {
 					s.core.geometry.dispose();
 					s.glow.geometry.dispose();
-					const { core, glow } = createSunMesh();
+					const { core, glow } = createSunMesh(sunParams.coreColor, sunParams.glowColor);
 					s.group.remove(s.core, s.glow);
 					s.core = core;
 					s.glow = glow;
