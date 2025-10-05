@@ -1,5 +1,4 @@
 import React from 'react';
-import GraphNavBar from '../components/GraphNavBar';
 import Universe from '../three/Universe';
 
 import '../styles/spaceBackground.css';
@@ -12,6 +11,8 @@ const GraphPage: React.FC = () => {
 	const [pendingSun, setPendingSun] = useState<{ galaxy: string; sunIndex: number } | null>(null);
 	const [transitioning, setTransitioning] = useState(false);
 	const NAVBAR_HEIGHT = 56;
+	const GRAPH_NAVBAR_HEIGHT = 50;
+	const TOTAL_NAV_HEIGHT = NAVBAR_HEIGHT + GRAPH_NAVBAR_HEIGHT; // renombrado
 
 	const handleSunSelect = (data: { galaxy: string; sunIndex: number }) => {
 		setPendingSun(data);
@@ -32,7 +33,7 @@ const GraphPage: React.FC = () => {
 			<div className="stars" />
 			<div className="twinkling" />
 			<div className="clouds" />
-			<GraphNavBar />
+			 {/* NavBar global ya presente */}
 			<main style={{
 				minHeight: '100vh',
 				width: '100%',
@@ -54,8 +55,8 @@ const GraphPage: React.FC = () => {
 					<div style={{
 						position: 'relative',
 						width: '100%',
-						height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
-						marginTop: NAVBAR_HEIGHT,
+						height: `calc(100vh - ${TOTAL_NAV_HEIGHT}px)`, // actualizado
+						marginTop: 0, // quitado desplazamiento duplicado
 						overflow: 'hidden'
 					}}>
 						 <Universe autoRotate onSunSelect={handleSunSelect} />

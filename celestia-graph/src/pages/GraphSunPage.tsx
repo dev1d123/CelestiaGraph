@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Planets from '../three/Planets';
 import MiniChart3D from '../three/MiniChart3D';
-import GraphNavBar from '../components/GraphNavBar'; // añadido
 import { useCart } from '../context/CartContext'; // nuevo
 
 function useQuery() {
@@ -18,6 +17,8 @@ const GraphSunPage: React.FC = () => {
 	const metrics = useMemo(() => Array.from({length:7}, () => 4 + Math.random()*16), []);
 	const [depth, setDepth] = useState(3); // nueva profundidad controlable
 	const NAVBAR_HEIGHT = 56; // altura del navbar (ajusta si cambia el componente)
+	const GRAPH_NAVBAR_HEIGHT = 50; // nuevo
+	const TOTAL_NAV_HEIGHT = NAVBAR_HEIGHT + GRAPH_NAVBAR_HEIGHT; // renombrado
 
 	const { addItem } = useCart(); // nuevo
 	const [justAdded, setJustAdded] = useState(false); // feedback rápido
@@ -40,13 +41,12 @@ const GraphSunPage: React.FC = () => {
 
 	return (
 		<div style={{position:'relative', width:'100%', height:'100vh', overflow:'hidden', background:'#03060a'}}>
-			<GraphNavBar /> {/* navbar compartido */}
-			{/* Wrapper que desplaza todo el contenido bajo el navbar */}
+			{/* NavBar + GraphNavBar globales */}
 			<div style={{
 				position:'relative',
 				width:'100%',
-				height:`calc(100vh - ${NAVBAR_HEIGHT}px)`,
-				top:0
+				height:`calc(100vh - ${TOTAL_NAV_HEIGHT}px)`, // actualizado
+				marginTop: 0 // quitado desplazamiento extra
 			}}>
 				<Planets sunLabel={sun} depth={depth} />
 				{/* Etiqueta superior izquierda */}
@@ -112,7 +112,7 @@ const GraphSunPage: React.FC = () => {
 				{/* HUD Derecha (info) */}
 				<div style={{
 					position:'absolute',
-					top:0,
+					top:10,
 					right:0,
 					bottom:0,
 					width:'340px',

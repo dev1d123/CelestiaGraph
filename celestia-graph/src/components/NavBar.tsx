@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
 const injectNavStyles = () => {
 	if (document.getElementById('nav-styles')) return;
@@ -27,7 +28,7 @@ const injectNavStyles = () => {
 		display: flex;
 		align-items: center;
 		font-family: 'Underdog', cursive;
-		font-size: 1.35rem;
+		font-size: 1.5rem;
 		letter-spacing: .5px;
 		background: var(--grad-accent);
 		-webkit-background-clip: text;
@@ -98,6 +99,16 @@ const injectNavStyles = () => {
 		outline: none;
 		box-shadow: var(--focus-ring);
 		border-radius: 10px;
+	}
+	.nav-links a[data-active='true'] {
+		color: var(--text-main);
+	}
+	.nav-links a[data-active='true']::before {
+		opacity: 1;
+		transform: scale(1);
+	}
+	.nav-links a[data-active='true']::after {
+		opacity: .9;
 	}
 	.hamburger {
 		display: none;
@@ -180,6 +191,7 @@ const injectNavStyles = () => {
 
 export const NavBar: React.FC = () => {
 	const [open, setOpen] = useState(false);
+	const { pathname } = useLocation();
 
 	useEffect(() => {
 		injectNavStyles();
@@ -226,13 +238,28 @@ export const NavBar: React.FC = () => {
 					role="menubar"
 				>
 					<li role="none">
-						<a role="menuitem" href="#about" onClick={() => setOpen(false)}>About us</a>
+						<Link
+							role="menuitem"
+							to="/about"
+							data-active={pathname === '/about'}
+							onClick={() => setOpen(false)}
+						>About us</Link>
 					</li>
 					<li role="none">
-						<a role="menuitem" href="#classic-search" onClick={() => setOpen(false)}>Classic search</a>
+						<Link
+							role="menuitem"
+							to="/classic"
+							data-active={pathname === '/classic'}
+							onClick={() => setOpen(false)}
+						>Classic search</Link>
 					</li>
 					<li role="none">
-						<a role="menuitem" href="#tree-search" onClick={() => setOpen(false)}>Tree search</a>
+						<Link
+							role="menuitem"
+							to="/graph"
+							data-active={pathname === '/graph'}
+							onClick={() => setOpen(false)}
+						>Graph search</Link>
 					</li>
 				</ul>
 			</div>
