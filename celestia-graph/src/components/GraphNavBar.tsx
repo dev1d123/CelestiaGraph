@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useCart } from '../context/CartContext'; // nuevo
 import { useNavigate } from 'react-router-dom'; // nuevo
 import { dummyArticles } from '../data/dummyArticles'; // nuevo
+import { fetchRemoteSearch } from '../services/ApiService'; // API índice invertido
 
 const injectGraphNavStyles = () => {
 	if (document.getElementById('graph-nav-styles')) return;
@@ -633,14 +634,37 @@ const GraphNavBar: React.FC = () => {
 	};
 
 	// quick submit
-	const submitQuick = (e: React.FormEvent) => {
+	const submitQuick = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const q = search.trim();
-		if (q) {
-			// NUEVO: redirigir directamente a ClassicalPage con el query param
-			navigate(`/classical?q=${encodeURIComponent(q)}`);
+		if (!q) return;
+		
+		setSearchLoading(true);
+		setShowResults(true);
+		
+		try {
+			const hits = await fetchRemoteSearch(q);
+			// Mapear hits de la API al formato esperado por el panel
+			const mapped = hits.map(hit => ({
+				id: hit.id || hit.pmc_id,
+				title: hit.title,
+				abstract: hit.abstract || '',
+				authors: hit.authors || [],
+				year: hit.year || 0,
+				citations: hit.citations || 0,
+				tags: hit.tags || [],
+				height: 0,
+				date: '',
+				_hTitle: hit.title,
+				_hAbstract: hit.abstract || ''
+			}));
+			setResults(mapped);
+		} catch (err) {
+			console.error('[GraphNavBar] Search error:', err);
+			setResults([]);
+		} finally {
+			setSearchLoading(false);
 		}
-		// (ya no abrimos panel local de resultados para búsqueda remota)
 	};
 
 	// override advanced apply

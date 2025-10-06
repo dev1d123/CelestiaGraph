@@ -526,7 +526,42 @@ const ChatBotWidget: React.FC = () => {
                         <h5 className="cg-subtitle" style={{marginTop:'.75rem'}}>Suggested Articles</h5>
                         <div className="cg-articles">
                           {msg.meta.data.articles.slice(0, 8).map((a: any, i: number) => (
-                            <div key={a.pmc_id || i} className="cg-article">
+                            <button
+                              key={a.pmc_id || i}
+                              onClick={() => {
+                                if (a.pmc_id && a.title) {
+                                  // Navegar a la página de detalle del artículo (graph-sun)
+                                  const cluster = a.cluster_id || 0;
+                                  const galaxy = `Galaxy${cluster}`;
+                                  navigate(
+                                    `/graph-sun?sun=${encodeURIComponent(galaxy)}&idx=0` +
+                                    `&pmc=${encodeURIComponent(a.pmc_id)}&title=${encodeURIComponent(a.title)}`
+                                  );
+                                }
+                              }}
+                              className="cg-article"
+                              style={{
+                                cursor: (a.pmc_id && a.title) ? 'pointer' : 'default',
+                                transition: 'all 0.2s ease',
+                                width: '100%',
+                                textAlign: 'left'
+                              }}
+                              onMouseOver={(e) => {
+                                if (a.pmc_id && a.title) {
+                                  e.currentTarget.style.background = 'linear-gradient(125deg,#1a3a50,#152838)';
+                                  e.currentTarget.style.borderColor = '#43e9ff';
+                                  e.currentTarget.style.transform = 'translateX(4px)';
+                                }
+                              }}
+                              onMouseOut={(e) => {
+                                if (a.pmc_id && a.title) {
+                                  e.currentTarget.style.background = 'linear-gradient(125deg,#13283b,#102232)';
+                                  e.currentTarget.style.borderColor = '#1f3a53';
+                                  e.currentTarget.style.transform = 'translateX(0)';
+                                }
+                              }}
+                              disabled={!(a.pmc_id && a.title)}
+                            >
                               <p className="cg-article-title">{a.title || '(sin título)'}</p>
                               <div className="cg-article-meta">
                                 {a.pmc_id && <span>ID: {a.pmc_id}</span>}
@@ -535,7 +570,7 @@ const ChatBotWidget: React.FC = () => {
                                   <span>Score: {a.relevance_score.toFixed(3)}</span>
                                 )}
                               </div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </>
