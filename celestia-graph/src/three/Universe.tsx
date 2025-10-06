@@ -475,7 +475,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				const obj = sunHits[0].object as THREE.Mesh;
 				const sunRuntime = suns.find(s => s.core === obj);
 				if (sunRuntime) {
-					const gLabel = runtimeGalaxies.find(g => g.center.distanceTo(sunRuntime.galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
+					const gLabel = runtimeGalaxies.find(g => g.center.distanceTo(sunRuntime.galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Cluster';
 					if (typeof onSunSelect === 'function') {
 						onSunSelect({
 							galaxy: gLabel,

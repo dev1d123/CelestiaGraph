@@ -208,7 +208,7 @@ const GraphSunPage: React.FC = () => {
 					label: t,
 					title: t,
 					pmcId: pid,
-					autores: [],      // vacío para hover simple
+					autores: [],
 					fecha: null
 				};
 			});
@@ -245,14 +245,14 @@ const GraphSunPage: React.FC = () => {
 
 	const handleAdd = () => {
 		const now = new Date();
-		const artId = `${Date.now()}`; // id numérico simple
+		const artId = `${Date.now()}`;
 		addItem({
 			id: artId,
-			name: `Nodo ${sun} #${idx}`,
+			name: `Node ${sun} #${idx}`,
 			date: now.toISOString().split('T')[0],
-			keywords: ['dag','demo','grafico'].join(', '),
-			authors: 'Autor Demo',
-			abstract: 'Elemento agregado desde la visualización (demo).',
+			keywords: ['graph','demo','viz'].join(', '),
+			authors: 'Demo Author',
+			abstract: 'Item added from visualization (demo).',
 			link: `https://example.org/demo/${artId}`
 		});
 		setJustAdded(true);
@@ -578,7 +578,7 @@ const GraphSunPage: React.FC = () => {
 						}}
 					>
 						<span style={{position:'relative', zIndex:2}}>
-							{ justAdded ? 'Añadido ✔' : 'Agregar a la lista...' }
+							{ justAdded ? 'Added ✔' : 'Add to list...' }
 						</span>
 						<div style={{
 							position:'absolute',

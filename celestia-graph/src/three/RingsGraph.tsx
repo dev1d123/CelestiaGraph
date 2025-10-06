@@ -65,6 +65,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
 
   const [hoverRef, setHoverRef] = useState<ReferenceNode | null>(null); // NUEVO
   const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 }); // NUEVO
+  const [simHoverTitle, setSimHoverTitle] = useState<string | null>(null); // NEW similar hover title
 
   const onMove = useCallback((e: React.MouseEvent) => {
     setMousePos({ x: e.clientX, y: e.clientY });
@@ -132,26 +133,29 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
   };
 
   const showLabelFor = (node: RingNode) => {
+    // keep ONLY for reference mode (sprite removed for similar mode)
+    if (mode === 'similar') return;
     ensureGroup();
     clearLabel();
     const sprite = makeLabelSprite(node.title);
-    // Radial offset away from center so it does not overlap the sphere
     if (centerRef.current) {
       const fromCenter = node.mesh.position.clone().sub(centerRef.current.position);
-      if (fromCenter.lengthSq() > 0.0001) {
-        fromCenter.normalize().multiplyScalar(26); // distance away from node
-      }
+      if (fromCenter.lengthSq() > 0.0001) fromCenter.normalize().multiplyScalar(34); // increased offset
       sprite.position.copy(
         node.mesh.position.clone()
           .add(fromCenter)
-          .add(new THREE.Vector3(0, 6, 0)) // slight upward lift
+          .add(new THREE.Vector3(0, 8, 0))
       );
     } else {
-      sprite.position.copy(node.mesh.position.clone().add(new THREE.Vector3(0, 30, 0)));
+      sprite.position.copy(node.mesh.position.clone().add(new THREE.Vector3(0, 32, 0)));
     }
     labelSpriteRef.current = sprite;
     groupRef.current!.add(sprite);
   };
+
+  // Factor de escala para hover (nodo + halo similar)
+  const HOVER_NODE_SCALE = 1.18;
+  const HOVER_HALO_SCALE = 1.35;
 
   const buildGraph = () => {
     ensureGroup();
@@ -243,12 +247,19 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
             const torus = new THREE.Mesh(tGeo, tMat);
               torus.rotation.x = Math.PI / 2.2;
             mesh.add(torus);
-            const haloSprite = new THREE.Sprite((centerRef.current as any) ? undefined : glowMat.clone());
-            haloSprite.material = (haloSprite.material as THREE.SpriteMaterial).clone();
-            (haloSprite.material as THREE.SpriteMaterial).color = color.clone();
-            (haloSprite.material as THREE.SpriteMaterial).opacity = 0.25;
-            haloSprite.scale.set(70, 70, 1);
+            const haloTex = createHaloTexture(color);
+            const haloMat = new THREE.SpriteMaterial({
+              map: haloTex,
+              transparent: true,
+              depthWrite: false,
+              depthTest: false,
+              blending: THREE.AdditiveBlending,
+              opacity: 0.85
+            });
+            const haloSprite = new THREE.Sprite(haloMat);
+            haloSprite.scale.set(60, 60, 1);
             mesh.add(haloSprite);
+            mesh.userData.halo = haloSprite; // guardar ref para hover
             ringGroup.add(mesh);
             nodesRef.current.push({
               id: `R${r}-N${i}`,
@@ -342,12 +353,19 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
           torus.rotation.x = Math.PI / 2.2;
           mesh.add(torus);
 
-          const halo = new THREE.Sprite((centerRef.current as any) ? undefined : glowMat.clone());
-          halo.material = (halo.material as THREE.SpriteMaterial).clone();
-          (halo.material as THREE.SpriteMaterial).color = color.clone();
-          (halo.material as THREE.SpriteMaterial).opacity = 0.25;
-          halo.scale.set(70, 70, 1);
+          const haloTex = createHaloTexture(color);
+          const haloMat = new THREE.SpriteMaterial({
+            map: haloTex,
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.9
+          });
+          const halo = new THREE.Sprite(haloMat);
+          halo.scale.set(56, 56, 1);
           mesh.add(halo);
+          mesh.userData.halo = halo;
 
           ringGroup.add(mesh);
 
@@ -533,7 +551,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
 
     const animate = () => {
       animReq.current = requestAnimationFrame(animate);
-      const t = performance.now() * 0.001;1
+      const t = performance.now() * 0.001; // FIX: removed stray '1'
       const paused = !!hoveredRef.current;
 
       if (!paused) {
@@ -605,6 +623,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
         });
       }
 
+// ...existing code...
       if (cameraRef.current) {
         raycaster.current.setFromCamera(pointer.current, cameraRef.current);
         const intersects = raycaster.current.intersectObjects(nodesRef.current.map(n => n.mesh));
@@ -616,18 +635,37 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
             const pm = hoveredRef.current.mesh.material as THREE.MeshStandardMaterial;
             pm.emissive.copy(hoveredRef.current.mesh.userData.baseEmissive);
             hoveredRef.current.mesh.scale.setScalar(
-              hoveredRef.current.mesh.scale.x / 1.18
+              hoveredRef.current.mesh.scale.x / HOVER_NODE_SCALE
             );
+            const prevHalo: THREE.Sprite | undefined = hoveredRef.current.mesh.userData.halo;
+            if (prevHalo) {
+              prevHalo.scale.set(
+                prevHalo.scale.x / HOVER_HALO_SCALE,
+                prevHalo.scale.y / HOVER_HALO_SCALE,
+                1
+              );
+              (prevHalo.material as THREE.SpriteMaterial).opacity = 0.9;
+            }
           }
           hoveredRef.current = newHover;
           if (newHover) {
-            // pointer cursor
             if (containerRef.current) containerRef.current.style.cursor = 'pointer';
             const m = newHover.mesh.material as THREE.MeshStandardMaterial;
             m.emissive = m.emissive.clone().addScalar(0.45);
-            newHover.mesh.scale.multiplyScalar(1.18);
+            newHover.mesh.scale.multiplyScalar(HOVER_NODE_SCALE);
+
             if (mode === 'similar') {
-              showLabelFor(newHover);
+              const halo: THREE.Sprite | undefined = newHover.mesh.userData.halo;
+              if (halo) {
+                halo.scale.multiplyScalar(HOVER_HALO_SCALE);
+                (halo.material as THREE.SpriteMaterial).opacity = 1.0;
+              }
+            }
+            // UNIFICADO: siempre usar el mismo tooltip solo con título
+            clearLabel();                  // no usamos sprite en ningún modo
+            setSimHoverTitle(newHover.title);
+            setHoverRef(null);             // ya no se usa tooltip de referencia
+            if (mode === 'similar') {
               onNodeHover?.({
                 id: newHover.id,
                 title: newHover.title,
@@ -635,20 +673,19 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
                 energy: newHover.energy,
                 score: newHover.score
               });
-              setHoverRef(null);
             } else {
-              clearLabel();
-              setHoverRef(newHover.meta || null);
               onNodeHover?.(null);
             }
           } else {
             if (containerRef.current) containerRef.current.style.cursor = 'grab';
             clearLabel();
             setHoverRef(null);
+            setSimHoverTitle(null);
             onNodeHover?.(null);
           }
         }
       }
+// ...existing code...
 
       if (centerRef.current) centerRef.current.rotation.y += paused ? 0.0015 : 0.0035;
 
@@ -672,6 +709,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
 
   useEffect(() => {
     clearLabel();
+    setSimHoverTitle(null); // reset tooltip when dependencies change
     buildGraph();
     if (mode === 'similar') onNodeHover?.(null);
   }, [depth, mode, centerLabel, references]); // NUEVO: references
@@ -684,42 +722,62 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
   return (
     <div style={{ position: 'absolute', inset: 0 }} onMouseMove={onMove}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
-      {/* Eliminado el SVG overlay de referencias */}
-      {hoverRef && mode === 'reference' && (
+      {/* Tooltip unificado: solo título, ambos modos */}
+      {simHoverTitle && (
         <div
           style={{
             position: 'fixed',
-            top: mousePos.y + 14,
             left: mousePos.x + 14,
-            zIndex: 250,
-            maxWidth: '320px',
-            background: 'linear-gradient(140deg,#101b27,#1b2c3d)',
-            border: '1px solid #ffcf7b44',
-            borderRadius: '.65rem',
-            padding: '.55rem .7rem .6rem',
-            color: '#e9f4ff',
+            top: mousePos.y + 14,
+            zIndex: 300,
+            padding: '.42rem .6rem .48rem',
             fontSize: '.6rem',
-            lineHeight: 1.35,
-            letterSpacing: '.4px',
-            boxShadow: '0 8px 26px -12px #000'
+            letterSpacing: '.5px',
+            fontWeight: 600,
+            color: '#e9f4ff',
+            background: 'linear-gradient(135deg, rgba(18,34,54,.9), rgba(10,20,32,.88))',
+            border: '1px solid rgba(160,200,255,0.22)',
+            borderRadius: '.6rem',
+            boxShadow: '0 6px 18px -8px #000',
+            maxWidth: '340px',
+            pointerEvents: 'none',
+            lineHeight: 1.25,
+            whiteSpace: 'normal'
           }}
         >
-          <div style={{ fontWeight: 600, color: '#ffd28a', marginBottom: '.3rem' }}>
-            {hoverRef.nombre}
-          </div>
-          <div style={{ opacity: .85, marginBottom: '.2rem' }}>
-            <strong>Authors: </strong>
-            {hoverRef.autores.slice(0, 8).join(', ')}
-            {hoverRef.autores.length > 8 && ' …'}
-          </div>
-          <div style={{ opacity: .7 }}>
-            <strong>Year: </strong>{hoverRef.fecha || 'N/A'}
-          </div>
+          {simHoverTitle}
         </div>
       )}
-      {/* Tooltip similar se mantiene vía label sprite en modo 'similar' (sin cambios) */}
     </div>
   );
+}; // FIX: added missing closing brace for component
+
+// RE-ADDED: halo texture generator (was removed, buildGraph calls it)
+const createHaloTexture = (color: THREE.Color, resolution = 256) => {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = resolution;
+  const ctx = canvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(
+    resolution / 2,
+    resolution / 2,
+    0,
+    resolution / 2,
+    resolution / 2,
+    resolution / 2
+  );
+  const r = Math.round(color.r * 255);
+  const g = Math.round(color.g * 255);
+  const b = Math.round(color.b * 255);
+  grad.addColorStop(0, `rgba(${r},${g},${b},0.85)`);
+  grad.addColorStop(0.35, `rgba(${r},${g},${b},0.45)`);
+  grad.addColorStop(0.65, `rgba(${r},${g},${b},0.15)`);
+  grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, resolution, resolution);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  return tex;
 };
 
 export default RingsGraph;

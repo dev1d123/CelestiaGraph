@@ -29,7 +29,7 @@ const params: SunParameters = {
 let gui: dat.GUI | null = null;
 let folderAdded = false;
 
-const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true, title = 'Artículo', pmcId }) => {
+const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true, title = 'Article', pmcId }) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const coreRef = useRef<THREE.Mesh | null>(null);
@@ -220,7 +220,7 @@ const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true
 					}}
 				>
 					<div style={{ fontWeight: 600, marginBottom: 4, color: '#ffcf7b' }}>
-						{title || 'Sin título'}
+						{title || 'Untitled'}
 					</div>
 					<div style={{ color: '#9bd2ff' }}>
 						PMC: {pmcId || 'N/A'}

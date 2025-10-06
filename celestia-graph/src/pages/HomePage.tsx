@@ -23,11 +23,11 @@ const HomePage: React.FC = () => {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(res));
         } catch { /* ignore */ }
         setError(null);
-        console.log('[HomePage] Resultado combinado final:', res);
+        console.log('[HomePage] Combined result:', res);
       })
       .catch(err => {
         if (err?.name === 'CanceledError') return;
-        setError(err?.message || 'Error cargando datos combinados');
+        setError(err?.message || 'Error loading combined data');
         console.error('Combined fetch error:', err);
       })
       .finally(() => setLoading(false));
@@ -40,11 +40,11 @@ const HomePage: React.FC = () => {
       <LineDiv />
       <InformationBox />
       <section style={{ padding: '1rem', fontFamily: 'monospace' }}>
-        {loading && <div>Cargando datos combinados...</div>}
+        {loading && <div>Loading combined data...</div>}
         {!loading && error && <div style={{ color: 'red' }}>Error: {error}</div>}
         {!loading && !error && (
           <>
-            <div>Grupos combinados: {groups.length}</div>
+            <div>Combined groups: {groups.length}</div>
             <pre style={{ maxHeight: 300, overflow: 'auto', background: '#111', color: '#0f0', padding: '0.5rem' }}>
 {JSON.stringify(groups.slice(0, 5), null, 2)}
             </pre>
