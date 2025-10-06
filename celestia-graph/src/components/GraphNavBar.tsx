@@ -635,7 +635,12 @@ const GraphNavBar: React.FC = () => {
 	// quick submit
 	const submitQuick = (e: React.FormEvent) => {
 		e.preventDefault();
-		performSearch();
+		const q = search.trim();
+		if (q) {
+			// NUEVO: redirigir directamente a ClassicalPage con el query param
+			navigate(`/classical?q=${encodeURIComponent(q)}`);
+		}
+		// (ya no abrimos panel local de resultados para búsqueda remota)
 	};
 
 	// override advanced apply
@@ -704,26 +709,18 @@ const GraphNavBar: React.FC = () => {
 						placeholder="Search an article..."
 						value={search}
 						onChange={e => setSearch(e.target.value)}
-						onKeyDown={e => { if (e.key === 'Escape') setShowResults(false); }}
+						onKeyDown={e => {
+							if (e.key === 'Enter') {
+								submitQuick(e as any);
+							}
+							if (e.key === 'Escape') setShowResults(false);
+						}}
 						aria-label="Search"
 					/>
 				</form>
 
 				<div className="graph-nav-buttons">
-					<button
-						type="button"
-						className="gbtn"
-						onClick={() => setShowAdv(true)}
-						aria-haspopup="dialog"
-						aria-expanded={showAdv}
-					>
-						<span style={{ display: 'inline-flex' }}>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-								<path d="M3 5h18M6 12h12M10 19h4" />
-							</svg>
-						</span>
-						Advanced search
-					</button>
+
 					<button
 						type="button"
 						className="gbtn primary"
@@ -807,166 +804,6 @@ const GraphNavBar: React.FC = () => {
 								</div>
 							</article>
 						))}
-					</div>
-				</div>
-			)}
-
-			{/* Modal de búsqueda avanzada */}
-			{showAdv && (
-				<div
-					className="adv-modal-backdrop"
-					onClick={() => setShowAdv(false)}
-				>
-					<div
-						className="adv-modal"
-						ref={advRef}
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="adv-modal-title"
-						onClick={e => e.stopPropagation()}
-					>
-						<button
-							className="close-x"
-							aria-label="Cerrar"
-							onClick={() => setShowAdv(false)}
-						>×</button>
-						<h3 id="adv-modal-title">Advanced Search</h3>
-						<div className="adv-grid">
-							{/* ...existing code (campos) ... */}
-							<div className="afield">
-								<label>Palabras clave</label>
-								<input
-									name="q"
-									value={adv.q}
-									onChange={e => updateAdv({ q: e.target.value })}
-									placeholder="ej: modular consenso blobs"
-								/>
-							</div>
-							<div className="afield">
-								<label>Frase exacta</label>
-								<input
-									value={adv.exact}
-									onChange={e => updateAdv({ exact: e.target.value })}
-									placeholder="cadena exacta"
-								/>
-							</div>
-							<div className="afield">
-								<label>Excluir</label>
-								<input
-									value={adv.exclude}
-									onChange={e => updateAdv({ exclude: e.target.value })}
-									placeholder="palabras NO"
-								/>
-							</div>
-							<div className="afield">
-								<label>Autor</label>
-								<input
-									value={adv.author}
-									onChange={e => updateAdv({ author: e.target.value })}
-									placeholder="@handle / id"
-								/>
-							</div>
-							<div className="afield">
-								<label>Tags</label>
-								<input
-									value={adv.tags}
-									onChange={e => updateAdv({ tags: e.target.value })}
-									placeholder="tag1,tag2"
-								/>
-							</div>
-							<div className="afield">
-								<label>Desde (fecha)</label>
-								<input
-									type="date"
-									value={adv.dateFrom}
-									onChange={e => updateAdv({ dateFrom: e.target.value })}
-								/>
-							</div>
-							<div className="afield">
-								<label>Hasta (fecha)</label>
-								<input
-									type="date"
-									value={adv.dateTo}
-									onChange={e => updateAdv({ dateTo: e.target.value })}
-								/>
-							</div>
-							<div className="afield">
-								<label>Op. lógica</label>
-								<select
-									value={adv.logic}
-									onChange={e => updateAdv({ logic: e.target.value as 'AND' | 'OR' })}
-								>
-									<option value="AND">AND (todas)</option>
-									<option value="OR">OR (cualquiera)</option>
-								</select>
-							</div>
-							<div className="afield">
-								<label>Altura mín.</label>
-								<input
-									type="number"
-									value={adv.minHeight}
-									onChange={e => updateAdv({ minHeight: e.target.value })}
-									placeholder="ej: 1200"
-								/>
-							</div>
-							<div className="afield">
-								<label>Altura máx.</label>
-								<input
-									type="number"
-									value={adv.maxHeight}
-									onChange={e => updateAdv({ maxHeight: e.target.value })}
-									placeholder="ej: 99999"
-								/>
-							</div>
-							<div className="afield">
-								<label>Límite</label>
-								<select
-									value={adv.limit}
-									onChange={e => updateAdv({ limit: e.target.value })}
-								>
-									<option>25</option>
-									<option>50</option>
-									<option>100</option>
-									<option>250</option>
-								</select>
-							</div>
-							<div className="afield">
-								<label>Extras</label>
-								<div style={{ display: 'flex', flexDirection: 'column', gap: '.35rem' }}>
-									<label style={{ fontSize: '.65rem', display: 'flex', gap: '.4rem', alignItems: 'center' }}>
-										<input
-											type="checkbox"
-											checked={adv.includeMeta}
-											onChange={e => updateAdv({ includeMeta: e.target.checked })}
-											style={{ accentColor: '#43e9ff' }}
-										/>
-										Incluir metadata
-									</label>
-									<span className="badge-chip">Expansión semántica futura</span>
-								</div>
-							</div>
-						</div>
-						<div className="logic-group" style={{ marginBottom: '.9rem' }}>
-							<button
-								type="button"
-								className={`gbtn ${adv.logic === 'AND' ? 'primary' : ''}`}
-								onClick={() => updateAdv({ logic: 'AND' })}
-							>AND</button>
-							<button
-								type="button"
-								className={`gbtn ${adv.logic === 'OR' ? 'primary' : ''}`}
-								onClick={() => updateAdv({ logic: 'OR' })}
-							>OR</button>
-							<button
-								type="button"
-								className="gbtn"
-								onClick={() => setAdv(initialAdv)}
-							>Reset</button>
-						</div>
-						<div className="modal-actions">
-							<button type="button" className="gbtn" onClick={() => setShowAdv(false)}>Cancelar</button>
-							<button type="button" className="gbtn primary" onClick={applyAdvanced}>Aplicar</button>
-						</div>
 					</div>
 				</div>
 			)}

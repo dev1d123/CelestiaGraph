@@ -244,16 +244,29 @@ const GraphSunPage: React.FC = () => {
 	const bigramsForCluster = clusterNumber != null ? bigramMap[String(clusterNumber)] : undefined;
 
 	const handleAdd = () => {
-		const now = new Date();
-		const artId = `${Date.now()}`;
+		// Build stable id (prefer pmcId)
+		const generatedId = pmcId || metadata?.id || `${Date.now()}`;
+		const name =
+			articleTitle?.trim() ||
+			metadata?.title?.trim() ||
+			sun ||
+			'Untitled Article';
+		const date = formattedDate || (metadata?.date || '').trim() || new Date().toISOString().split('T')[0];
+		const keywordsStr = (keywords && keywords.length) ? keywords.join(', ') : '—';
+		const authorsStr = authorsList.length ? authorsList.join(', ') : 'Unknown';
+		const abstractStr = abstractText.trim() || 'No abstract available.';
+		const link = pmcId
+			? `https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId.startsWith('PMC') ? pmcId : 'PMC'+pmcId}`
+			: (metadata?.doi ? `https://doi.org/${metadata.doi}` : '#');
+
 		addItem({
-			id: artId,
-			name: `Node ${sun} #${idx}`,
-			date: now.toISOString().split('T')[0],
-			keywords: ['graph','demo','viz'].join(', '),
-			authors: 'Demo Author',
-			abstract: 'Item added from visualization (demo).',
-			link: `https://example.org/demo/${artId}`
+			id: generatedId,
+			name,
+			date,
+			keywords: keywordsStr,
+			authors: authorsStr,
+			abstract: abstractStr,
+			link
 		});
 		setJustAdded(true);
 		setTimeout(()=>setJustAdded(false), 1800);

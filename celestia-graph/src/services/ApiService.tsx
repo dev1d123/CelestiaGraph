@@ -22,7 +22,7 @@ const BASE_URL = (envClusterUrl ? envClusterUrl.replace(/\/+$/, '') : DEFAULT_CL
 const UNIGRAM_URL = 'https://pmb-clusterign.vercel.app/cluster/unigramKeywords';
 const ARTICLES_URL = 'https://pmb-clusterign.vercel.app/cluster/cluster';
 // NUEVO: endpoint para obtener id por título
-const ID_BY_TITLE_URL = 'https://pmb-clusterign.vercel.app/data/igByTitle';
+const ID_BY_TITLE_URL = 'https://pmb-clusterign.vercel.app/data/idByTitle';
 
 export interface ClusterItem {
   id: string;
@@ -77,6 +77,31 @@ export interface ArticleMetadata {
   abstract?: string[]; // arreglo de párrafos
   date?: string;       // YYYYMMDD
   authors?: ArticleMetadataAuthor[];
+}
+
+// NUEVO: interfaces búsqueda y metadata externa
+export interface RemoteSearchHit {
+  title: string;
+  score: number;
+}
+export interface RemoteSearchResponse {
+  query: string;
+  results: RemoteSearchHit[];
+}
+export interface ExternalMetadataResponse {
+  doi?: string | null;
+  pmc_id?: string | null;
+  found?: boolean;
+  message?: string;
+  data?: {
+    paperId?: string;
+    url?: string;
+    citationCount?: number;
+    influentialCitationCount?: number;
+    openAccessPdf?: { url?: string; status?: string; license?: string | null };
+    fieldsOfStudy?: string[];
+    journal?: { name?: string; pages?: string; volume?: string };
+  };
 }
 
 // (Opcional) esquema zod si decides validar (ajusta campos)
@@ -450,6 +475,59 @@ class ApiService {
     }
   }
 
+  // NUEVO: búsqueda remota /search/?q=
+  async searchTitles(q: string, signal?: AbortSignal): Promise<RemoteSearchHit[]> {
+    const query = q.trim();
+    if (!query) return [];
+    try {
+      const { data } = await axios.get<RemoteSearchResponse>(
+        'https://pmb-clusterign.vercel.app/search/',
+        { params: { q: query }, signal }
+      );
+      if (data && Array.isArray(data.results)) {
+        return data.results
+          .filter(r => r && typeof r.title === 'string')
+          .map(r => ({ title: r.title, score: Number(r.score) }));
+      }
+      return [];
+    } catch (e) {
+      console.warn('[ApiService] searchTitles error', e);
+      return [];
+    }
+  }
+
+  // NUEVO: resolver PMC por título (texto plano con el PMC o vacío)
+  async getPmcIdByTitle(title: string, signal?: AbortSignal): Promise<string | null> {
+    if (!title.trim()) return null;
+    try {
+      const { data } = await axios.get(ID_BY_TITLE_URL, {
+        params: { title },
+        responseType: 'text',
+        signal
+      });
+      const txt = (typeof data === 'string' ? data : String(data || '')).trim();
+      if (/^PMC\d+$/i.test(txt)) return txt;
+      return null;
+    } catch (e) {
+      console.warn('[ApiService] getPmcIdByTitle error', e);
+      return null;
+    }
+  }
+
+  // NUEVO: metadata externa consult-silk
+  async getExternalMetadataByPmc(pmcId: string, signal?: AbortSignal): Promise<ExternalMetadataResponse | null> {
+    if (!pmcId) return null;
+    try {
+      const url = `https://consult-silk.vercel.app/metadata/${encodeURIComponent(pmcId)}`;
+      const { data } = await axios.get(url, { signal });
+      if (data && typeof data === 'object') return data as ExternalMetadataResponse;
+      return null;
+    } catch (e) {
+      console.warn('[ApiService] getExternalMetadataByPmc error', e);
+      return null;
+    }
+  }
+
   withAbort<T>(fn: (signal: AbortSignal) => Promise<T>): { promise: Promise<T>; abort: () => void } {
     const controller = new AbortController();
     const promise = fn(controller.signal);
@@ -486,3 +564,9 @@ export const fetchReferencesById = (id: string, signal?: AbortSignal) =>
   apiService.getReferencesById(id, signal);
 export const fetchClusterArticles = (signal?: AbortSignal) =>
   apiService.getClusterArticles(signal);
+export const fetchRemoteSearch = (q: string, signal?: AbortSignal) =>
+  apiService.searchTitles(q, signal);
+export const fetchPmcIdByTitle = (title: string, signal?: AbortSignal) =>
+  apiService.getPmcIdByTitle(title, signal);
+export const fetchExternalMetadataByPmc = (pmc: string, signal?: AbortSignal) =>
+  apiService.getExternalMetadataByPmc(pmc, signal);
