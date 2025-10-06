@@ -4,6 +4,7 @@ import RingsGraph from '../three/RingsGraph';
 import MiniChart3D from '../three/MiniChart3D';
 import { useCart } from '../context/CartContext';
 import '../styles/spaceBackground.css';
+import { fetchKeywordsById, fetchMetadataById, fetchClusterNumber, fetchBigramKeywords } from '../services/ApiService';
 
 // Tipo para las referencias que se enviarán al grafo
 type ReferenceNode = {
@@ -34,6 +35,11 @@ const GraphSunPage: React.FC = () => {
 	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
 	const [showRef, setShowRef] = useState(true); // referencia activa por defecto
 	const [references, setReferences] = useState<ReferenceNode[]>([]);
+	const [keywords, setKeywords] = useState<string[]>([]);
+	const [metadata, setMetadata] = useState<import('../services/ApiService').ArticleMetadata | null>(null);
+	const [clusterNumber, setClusterNumber] = useState<number | null>(null);
+	const [bigramMap, setBigramMap] = useState<Record<string, string[]>>({});
+	const [loadingMeta, setLoadingMeta] = useState(false);
 
 	useEffect(() => {
 		const calc = () => {
@@ -86,6 +92,58 @@ const GraphSunPage: React.FC = () => {
 			console.log('->>>>>>>>>>>>>>>(sin_pmc)');
 		}
 	}, [pmcId]);
+
+	useEffect(() => {
+		let aborted = false;
+		if (!pmcId) {
+			setKeywords([]);
+			setMetadata(null);
+			setClusterNumber(null);
+			return;
+		}
+		setLoadingMeta(true);
+		const controller = new AbortController();
+		Promise.all([
+			fetchKeywordsById(pmcId, controller.signal),
+			fetchMetadataById(pmcId, controller.signal),
+			fetchClusterNumber(pmcId, controller.signal)
+		]).then(([kw, meta, cNum]) => {
+			if (aborted) return;
+			setKeywords(kw);
+			setMetadata(meta);
+			setClusterNumber(cNum);
+		}).catch(e => {
+			if (!aborted) console.warn('[GraphSunPage] meta fetch error', e);
+		}).finally(() => !aborted && setLoadingMeta(false));
+
+		// cargar bigrams solo una vez (o si está vacío)
+		if (!Object.keys(bigramMap).length) {
+			fetchBigramKeywords(controller.signal)
+				.then(m => { if (!aborted) setBigramMap(m); })
+				.catch(e => console.warn('[GraphSunPage] bigrams error', e));
+		}
+
+		return () => { aborted = true; controller.abort(); };
+	}, [pmcId]);
+
+	const formattedDate = React.useMemo(() => {
+		if (!metadata?.date) return '';
+		const d = metadata.date.trim();
+		if (/^\d{8}$/.test(d)) return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;
+		return d;
+	}, [metadata]);
+
+	const authorsList = React.useMemo(() => {
+		if (!metadata?.authors || !metadata.authors.length) return [];
+		return metadata.authors.map(a => {
+			const gn = a.given_names || '';
+			const sn = a.surname || '';
+			return `${gn} ${sn}`.trim();
+		});
+	}, [metadata]);
+
+	const abstractText = (metadata?.abstract || []).join('\n\n');
+	const bigramsForCluster = clusterNumber != null ? bigramMap[String(clusterNumber)] : undefined;
 
 	const handleAdd = () => {
 		const now = new Date();
@@ -175,12 +233,12 @@ const GraphSunPage: React.FC = () => {
 					)}
 				</div>
 
-				{/* HUD Izquierda (gráfico 3D) */}
+				{/* HUD Izquierda (gráfico 3D / bigrams) */}
 				<div style={{
 					position:'absolute',
 					top:0,
 					left:0,
-					height:'82%', // nuevo (antes ocupaba todo)
+					height:'82%',
 					width:'300px',
 					padding:'14px 12px 12px',
 					display:'flex',
@@ -189,18 +247,53 @@ const GraphSunPage: React.FC = () => {
 					background:'linear-gradient(180deg, rgba(10,15,25,.8), rgba(10,15,25,.45))',
 					borderRight:'1px solid rgba(255,255,255,.07)',
 					backdropFilter:'blur(10px)',
-					overflow:'hidden', // cambiado (antes auto)
+						overflowY:'auto', // <-- scroll vertical
+						overflowX:'hidden',
+						scrollbarWidth:'thin',
 					zIndex:15
 				}}>
-					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Telemetría del DAG</h3>
-					<div style={{flex:'0 0 220px', position:'relative', border:'1px solid #1d2c42', borderRadius:'.8rem', overflow:'hidden', background:'radial-gradient(circle at 30% 25%, #162033, #0c141f)'}}>
-						<MiniChart3D data={metrics} />
+					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Cluster Bigrams</h3>
+					<div style={{
+						flex:'0 0 210px',
+						background:'radial-gradient(circle at 30% 25%, #162033, #0c141f)',
+						border:'1px solid #1d2c42',
+						borderRadius:'.8rem',
+						padding:'.65rem .75rem',
+						display:'flex',
+						flexDirection:'column',
+						gap:'.4rem',
+						overflow:'hidden'
+					}}>
+						<div style={{fontSize:'.55rem',letterSpacing:'.45px',color:'#9fc5ff',opacity:.85}}>
+							Cluster #{clusterNumber != null ? clusterNumber : '—'}
+						</div>
+						<div style={{
+							flex:1,
+							overflowY:'auto',
+							fontSize:'.6rem',
+							lineHeight:1.35,
+							paddingRight:'.35rem'
+						}}>
+							{bigramsForCluster?.length
+								? bigramsForCluster.map((p,i)=>
+									<div key={i} style={{
+										padding:'.28rem .45rem',
+										marginBottom:'.3rem',
+										background:'rgba(255,255,255,0.04)',
+										border:'1px solid rgba(255,255,255,0.06)',
+										borderRadius:'.55rem',
+										letterSpacing:'.35px',
+										color:'#e6f2ff'
+									}}>
+										{p}
+									</div>
+								)
+								: <div style={{opacity:.55}}>Sin bigrams disponibles.</div>
+							}
+						</div>
 					</div>
-					<div style={{fontSize:'.65rem', lineHeight:1.5, letterSpacing:'.4px', color:'#d1e2ff'}}>
-						Patrón energético agregado de los nodos del grafo. Cada barra representa un canal de actividad en la red distribuida.
-						<span style={{display:'block', marginTop:'.6rem', opacity:.7}}>
-							Valores simulados (demo estática).
-						</span>
+					<div style={{fontSize:'.6rem',lineHeight:1.4,color:'#d1e2ff',letterSpacing:'.4px'}}>
+						Frases clave (bigrams) representativas del cluster asignado al artículo.
 					</div>
 					<button onClick={() => navigate(-1)} style={{
 						marginTop:'auto',
@@ -222,42 +315,154 @@ const GraphSunPage: React.FC = () => {
 					top:0,
 					right:0,
 					height:'82%', // nuevo
-					width:'280px',
-					padding:'16px 14px 14px',
+					width:'320px',
+					padding:'16px 16px 14px',
 					display:'flex',
 					flexDirection:'column',
 					gap:'.75rem',
-					background:'linear-gradient(180deg, rgba(12,18,30,.82), rgba(12,18,30,.42))',
+					background:'linear-gradient(180deg, rgba(12,18,30,.85), rgba(12,18,30,.42))',
 					borderLeft:'1px solid rgba(255,255,255,.07)',
 					backdropFilter:'blur(10px)',
-					overflow:'hidden', // cambiado (antes auto)
+						overflowY:'auto',  // <-- scroll vertical
+						overflowX:'hidden',
+						scrollbarWidth:'thin',
 					zIndex:15
 				}}>
-					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Panel de Datos</h3>
-					<ul style={{listStyle:'none',padding:0, margin:0, fontSize:'.63rem', letterSpacing:'.4px', lineHeight:1.55}}>
-						<li><strong style={{color:'#ffd28a'}}>Artículo:</strong> {articleTitle || '(sin título)'}</li>
-						<li><strong style={{color:'#ffd28a'}}>PMC:</strong> {pmcId || 'N/A'}</li>
-						<li><strong style={{color:'#ffd28a'}}>Cluster:</strong> {sun}</li>
-						<li><strong style={{color:'#ffd28a'}}>Indice en cluster:</strong> {idx}</li>
-						<li><strong style={{color:'#ffd28a'}}>Tipo Grafo:</strong> DAG jerárquico</li>
-						<li><strong style={{color:'#ffd28a'}}>Profundidad Actual:</strong> {depth}</li>
-					</ul>
+					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Artículo</h3>
 					<div style={{
-						marginTop:'auto',
-						fontSize:'.6rem',
-						opacity:.55,
-						textAlign:'center',
-						letterSpacing:'.45px'
+						flex:1,
+						display:'flex',
+						flexDirection:'column',
+						gap:'.55rem',
+						overflow:'hidden'
 					}}>
-						Simulación conceptual — CelestiaGraph
+						<div style={{fontSize:'.63rem',letterSpacing:'.4px',lineHeight:1.4,color:'#ffdca3'}}>
+							<strong style={{color:'#ffd28a'}}>Nombre:</strong><br/>{articleTitle || '(sin título)'}
+						</div>
+						<div style={{fontSize:'.6rem',letterSpacing:'.4px',color:'#e6f1ff'}}>
+							<strong style={{color:'#ffd28a'}}>Fecha:</strong> {formattedDate || '—'}
+						</div>
+						<div style={{
+							flex:'1 1 auto',
+							minHeight:0,
+							display:'flex',
+							flexDirection:'column',
+							gap:'.45rem',
+							overflow:'hidden'
+						}}>
+							<div style={{fontSize:'.6rem',color:'#ffd28a'}}>Abstract:</div>
+							<div style={{
+								flex:1,
+								overflowY:'auto',
+								background:'rgba(255,255,255,0.04)',
+								border:'1px solid rgba(255,255,255,0.07)',
+								borderRadius:'.6rem',
+								padding:'.55rem .65rem',
+								fontSize:'.58rem',
+								lineHeight:1.4,
+								whiteSpace:'pre-wrap',
+								letterSpacing:'.35px',
+								color:'#dbe9ff'
+							}}>
+								{loadingMeta
+									? 'Cargando...'
+									: (abstractText || 'Sin abstract disponible.')
+								}
+							</div>
+						</div>
+						<div style={{fontSize:'.6rem',letterSpacing:'.4px'}}>
+							<div style={{color:'#ffd28a', marginBottom:'.25rem'}}>Autores:</div>
+							<div style={{
+								maxHeight:'140px',          // aumentado
+								overflowY:'auto',
+								background:'rgba(255,255,255,0.04)',
+								border:'1px solid rgba(255,255,255,0.07)',
+								borderRadius:'.55rem',
+								padding:'.55rem .6rem .45rem',
+								fontSize:'.55rem',
+								lineHeight:1.3,
+								color:'#e9f4ff',
+								scrollbarWidth:'thin'
+							}}>
+								{loadingMeta
+									? 'Cargando...'
+									: (authorsList.length
+										? (
+											<ol style={{
+												margin:0,
+												padding:'0 0 0 1.05rem',
+												display:'flex',
+												flexDirection:'column',
+												gap:'.25rem',
+												listStyle:'decimal'
+											}}>
+												{authorsList.map((a,i)=>(
+													<li key={i} style={{
+														padding:'.25rem .4rem',
+														background:'rgba(255,255,255,0.05)',
+														border:'1px solid rgba(255,255,255,0.08)',
+														borderRadius:'.45rem',
+														backdropFilter:'blur(2px)',
+														display:'block',
+														letterSpacing:'.35px',
+														color:'#f2f7ff'
+													}}>
+														<span style={{opacity:.85}}>{a}</span>
+													</li>
+												))}
+											</ol>
+										)
+										: 'Sin autores.'
+									  )
+								}
+							</div>
+						</div>
+						<div style={{fontSize:'.6rem',letterSpacing:'.4px'}}>
+							<div style={{color:'#ffd28a', marginBottom:'.25rem'}}>Keywords:</div>
+							<div style={{
+								display:'flex',
+								flexWrap:'wrap',
+								gap:'.4rem',
+								maxHeight:'68px',
+								overflowY:'auto',
+								padding:'.2rem .1rem'
+							}}>
+								{keywords.length
+									? keywords.map(k => (
+										<span key={k} style={{
+											fontSize:'.5rem',
+											padding:'.28rem .45rem',
+											background:'rgba(255,255,255,0.06)',
+											border:'1px solid rgba(255,255,255,0.12)',
+											borderRadius:'.55rem',
+											letterSpacing:'.4px',
+											color:'#f1f8ff'
+										}}>
+											{k}
+										</span>
+									))
+									: (loadingMeta ? 'Cargando...' : <span style={{opacity:.55}}>Sin keywords.</span>)
+								}
+							</div>
+						</div>
+						<div style={{fontSize:'.6rem',letterSpacing:'.4px',color:'#e6f1ff'}}>
+							<strong style={{color:'#ffd28a'}}>Número del cluster:</strong> {clusterNumber != null ? clusterNumber : (loadingMeta ? '...' : '—')}
+						</div>
+						<div style={{
+							marginTop:'auto',
+							fontSize:'.55rem',
+							opacity:.45,
+							textAlign:'center',
+							letterSpacing:'.4px'
+						}}>
+							PMC: {pmcId || 'N/A'}
+						</div>
 					</div>
-					{/* Botón agregar a lista (nuevo) */}
 					<button
 						onClick={handleAdd}
 						style={{
-							marginTop:'.9rem',
-							background: 'linear-gradient(115deg,#43e9ff 0%,#ff3fb4 50%,#ffb347 100%)',
-							border: '1px solid #4ad4ff',
+							background:'linear-gradient(115deg,#43e9ff 0%,#ff3fb4 50%,#ffb347 100%)',
+							border:'1px solid #4ad4ff',
 							color:'#08131f',
 							fontWeight:700,
 							fontSize:'.7rem',

@@ -68,6 +68,17 @@ interface ArticleGroupsResult {
   entries: ArticleEntry[][];
 }
 
+export interface ArticleMetadataAuthor {
+  surname?: string;
+  given_names?: string;
+}
+
+export interface ArticleMetadata {
+  abstract?: string[]; // arreglo de párrafos
+  date?: string;       // YYYYMMDD
+  authors?: ArticleMetadataAuthor[];
+}
+
 // (Opcional) esquema zod si decides validar (ajusta campos)
 // const ClusterItemSchema = z.object({
 //   id: z.string(),
@@ -342,14 +353,71 @@ class ApiService {
     }
   }
 
-  withAbort<T>(fn: (signal: AbortSignal) => Promise<T>): { promise: Promise<T>; abort: () => void } {
-    const controller = new AbortController();
-    const promise = fn(controller.signal);
-    return { promise, abort: () => controller.abort() };
+  async getKeywordsById(id: string, signal?: AbortSignal): Promise<string[]> {
+    if (!id) return [];
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/data/keywordsById', {
+        params: { id },
+        signal
+      });
+      return Array.isArray(data) ? data.filter(d => typeof d === 'string') : [];
+    } catch (e) {
+      console.warn('[ApiService] getKeywordsById error', e);
+      return [];
+    }
   }
-}
 
+  async getMetadataById(id: string, signal?: AbortSignal): Promise<ArticleMetadata | null> {
+    if (!id) return null;
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/data/metadataById', {
+        params: { id },
+        signal
+      });
+      return (data && typeof data === 'object') ? data as ArticleMetadata : null;
+    } catch (e) {
+      console.warn('[ApiService] getMetadataById error', e);
+      return null;
+    }
+  }
+
+  async getClusterNumber(id: string, signal?: AbortSignal): Promise<number | null> {
+    if (!id) return null;
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/data/clusterNumber', {
+        params: { id },
+        signal
+      });
+      const n = parseInt(String(data).trim(), 10);
+      return isNaN(n) ? null : n;
+    } catch (e) {
+      console.warn('[ApiService] getClusterNumber error', e);
+      return null;
+    }
+  }
+
+  async getBigramKeywords(signal?: AbortSignal): Promise<Record<string, string[]>> {
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/cluster/bigramKeywords', { signal });
+      if (data && typeof data === 'object') {
+        const out: Record<string, string[]> = {};
+        for (const [k, v] of Object.entries<any>(data)) {
+          if (Array.isArray(v)) out[k] = v.filter(x => typeof x === 'string');
+        }
+        return out;
+      }
+      return {};
+    } catch (e) {
+      console.warn('[ApiService] getBigramKeywords error', e);
+      return {};
+    }
+  }
+} // cierre clase ApiService
+
+// Instancia singleton
 export const apiService = new ApiService();
+
+// Helpers
 export const fetchCluster = (p?: Record<string, any>, signal?: AbortSignal) =>
   apiService.getCluster(p, signal);
 export const fetchClusterById = (id: string, signal?: AbortSignal) =>
@@ -358,6 +426,13 @@ export const searchCluster = (q: string, signal?: AbortSignal) =>
   apiService.searchCluster(q, signal);
 export const fetchCombinedGroups = (signal?: AbortSignal) =>
   apiService.getCombinedGroups(signal);
-// NUEVO helper chat
 export const fetchChat = (input: string, userId = 'default', signal?: AbortSignal) =>
   apiService.chat(input, userId, signal);
+export const fetchKeywordsById = (id: string, signal?: AbortSignal) =>
+  apiService.getKeywordsById(id, signal);
+export const fetchMetadataById = (id: string, signal?: AbortSignal) =>
+  apiService.getMetadataById(id, signal);
+export const fetchClusterNumber = (id: string, signal?: AbortSignal) =>
+  apiService.getClusterNumber(id, signal);
+export const fetchBigramKeywords = (signal?: AbortSignal) =>
+  apiService.getBigramKeywords(signal);
