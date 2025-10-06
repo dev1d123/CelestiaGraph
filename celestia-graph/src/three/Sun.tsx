@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import * as dat from 'dat.gui';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -6,6 +6,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 interface SunProps {
 	background?: string;
 	autoRotate?: boolean;
+	title?: string;
+	pmcId?: string | null;
 }
 
 interface SunParameters {
@@ -27,12 +29,14 @@ const params: SunParameters = {
 let gui: dat.GUI | null = null;
 let folderAdded = false;
 
-const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true }) => {
+const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true, title = 'Artículo', pmcId }) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const coreRef = useRef<THREE.Mesh | null>(null);
 	const glowRef = useRef<THREE.Mesh | null>(null);
 	const animIdRef = useRef<number | null>(null);
+	const [hovering, setHovering] = useState(false);
+	const [tipPos, setTipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
 	useEffect(() => {
 		const container = containerRef.current;
@@ -155,11 +159,21 @@ const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true
 	}, [autoRotate, background]);
 
 	return (
-		<div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
+		<div
+			ref={containerRef}
+			style={{ position: 'absolute', inset: 0 }}
+			onMouseMove={e => {
+				if (!hovering) setHovering(true);
+				setTipPos({ x: e.clientX + 14, y: e.clientY + 16 });
+			}}
+			onMouseLeave={() => setHovering(false)}
+		>
 			<canvas
 				ref={canvasRef}
 				style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
 			/>
+
+			{/* Panel fijo */}
 			<div
 				style={{
 					position: 'absolute',
@@ -168,17 +182,51 @@ const Sun: React.FC<SunProps> = ({ background = 'transparent', autoRotate = true
 					background: 'rgba(15,25,40,.55)',
 					backdropFilter: 'blur(8px)',
 					border: '1px solid rgba(255,255,255,0.08)',
-					padding: '.45rem .8rem',
+					padding: '.55rem .75rem .6rem',
 					borderRadius: '.65rem',
-					fontSize: '.65rem',
-					letterSpacing: '.5px',
+					fontSize: '.6rem',
+					letterSpacing: '.45px',
 					color: '#fff',
 					pointerEvents: 'none',
-					textTransform: 'uppercase'
+					maxWidth: 220,
+					lineHeight: 1.25
 				}}
 			>
-				Demo Sol
+				<div style={{ fontWeight: 600, color: '#ffcf7b', marginBottom: 4 }}>Sun</div>
+				<div style={{ opacity: .92 }}>{title}</div>
+				<div style={{ marginTop: 6, fontSize: '.55rem', color: '#9fd4ff' }}>
+					PMC: {pmcId || '—'}
+				</div>
 			</div>
+
+			{/* Tooltip hover */}
+			{hovering && (
+				<div
+					style={{
+						position: 'fixed',
+						left: tipPos.x,
+						top: tipPos.y,
+						zIndex: 100,
+						background: 'rgba(10,18,30,0.82)',
+						border: '1px solid rgba(255,255,255,0.14)',
+						padding: '.55rem .65rem .6rem',
+						borderRadius: '.6rem',
+						fontSize: '.58rem',
+						letterSpacing: '.45px',
+						color: '#e9f4ff',
+						maxWidth: 260,
+						pointerEvents: 'none',
+						boxShadow: '0 6px 18px -8px #000'
+					}}
+				>
+					<div style={{ fontWeight: 600, marginBottom: 4, color: '#ffcf7b' }}>
+						{title || 'Sin título'}
+					</div>
+					<div style={{ color: '#9bd2ff' }}>
+						PMC: {pmcId || 'N/A'}
+					</div>
+				</div>
+			)}
 		</div>
 	);
 };

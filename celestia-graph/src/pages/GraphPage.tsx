@@ -71,15 +71,43 @@ const GraphPage: React.FC = () => {
 	const [groups, setGroups] = useState<CombinedGroup[]>([]);
 	const [galaxyNames, setGalaxyNames] = useState<string[]>([]);
 	const [galaxyArticles, setGalaxyArticles] = useState<Record<string, string[]>>({});
+	const [galaxyArticleEntries, setGalaxyArticleEntries] = useState<Record<string, { title: string; id: string | null }[]>>({});
 	const [loadingData, setLoadingData] = useState(true);
 	const [searchTerm, setSearchTerm] = useState('');
+	const [galaxyGroupIndex, setGalaxyGroupIndex] = useState<Record<string, number>>({});
 
 	useEffect(() => {
 		let stored: CombinedGroup[] = [];
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
 			if (raw) stored = JSON.parse(raw);
-		} catch { /* ignore */ }
+		} catch {}
+		// Migración: si articles es array de strings -> convertir
+		const migrated = stored.map(g => {
+			if (Array.isArray(g.articles) && g.articles.length && typeof g.articles[0] === 'string') {
+				const parsed = (g.articles as any[]).map((s: string) => {
+					// Formatos previos:  "12: \"Title :: PMCXXXX\"" o "3: \"Title\""
+					const m = s.match(/^\s*\d+:\s*"(.+?)"\s*$/);
+					let full = m ? m[1] : s;
+					let id: string | null = null;
+					let title = full;
+					const sep = full.lastIndexOf('::');
+					if (sep !== -1) {
+						title = full.substring(0, sep).trim();
+						const maybe = full.substring(sep + 2).trim();
+						if (/^PMC\w+/i.test(maybe)) id = maybe;
+					}
+					return { title, id };
+				});
+				return { ...g, articles: parsed, articleEntries: parsed };
+			}
+			// Si ya viene con articleEntries pero no articles
+			if (!Array.isArray(g.articles) && Array.isArray((g as any).articleEntries)) {
+				return { ...g, articles: (g as any).articleEntries };
+			}
+			return g;
+		});
+		if (migrated.length) stored = migrated;
 		if (stored && stored.length) {
 			setGroups(stored);
 			setLoadingData(false);
@@ -101,14 +129,21 @@ const GraphPage: React.FC = () => {
 		const used = new Set<string>();
 		const names: string[] = [];
 		const articlesMap: Record<string, string[]> = {};
+		const entriesMap: Record<string, { title: string; id: string | null }[]> = {};
+		const groupIndexMap: Record<string, number> = {};
 		groups.slice(0, 52).forEach((g, idx) => {
 			const name = pickGalaxyLabel(g.labels, used, idx);
 			names.push(name);
-			articlesMap[name] = (g.articles || []).filter(a => typeof a === 'string' && a.trim());
+			const articleObjs = (g.articles || g.articleEntries || []) as any[];
+			entriesMap[name] = articleObjs.map(a => ({ title: a.title, id: a.id ?? null }));
+			articlesMap[name] = entriesMap[name].map(a => a.title);
+			groupIndexMap[name] = idx;
 		});
 		setGalaxyNames(names);
 		setGalaxyArticles(articlesMap);
-		console.log('[GraphPage] Galaxy mapping (single token labels):', { names, articlesMap });
+		setGalaxyArticleEntries(entriesMap);
+		setGalaxyGroupIndex(groupIndexMap);
+		console.log('[GraphPage] Galaxy mapping (with entries):', { names, groupIndexMap });
 	}, [groups]);
 
 	const themes = galaxyNames;
@@ -123,8 +158,29 @@ const GraphPage: React.FC = () => {
 	const confirmGo = () => {
 		if (!pendingSun) return;
 		setTransitioning(true);
+		let pmcId = '';
+		let title = '';
+		const gIdx = galaxyGroupIndex[pendingSun.galaxy];
+		if (gIdx != null) {
+			const group = groups[gIdx];
+			const articleObjs = (group.articles || group.articleEntries || []) as any[];
+			const chosen = articleObjs[pendingSun.sunIndex];
+			if (chosen) {
+				title = chosen.title || '';
+				pmcId = chosen.id || '';
+			}
+			console.log('[GraphPage] Navigation resolved:', {
+				galaxy: pendingSun.galaxy,
+				sunIndex: pendingSun.sunIndex,
+				title,
+				pmcId
+			});
+		}
 		setTimeout(() => {
-			navigate(`/graph-sun?sun=${encodeURIComponent(pendingSun.galaxy)}&idx=${pendingSun.sunIndex}`);
+			navigate(
+				`/graph-sun?sun=${encodeURIComponent(pendingSun.galaxy)}&idx=${pendingSun.sunIndex}` +
+				`&pmc=${encodeURIComponent(pmcId)}&title=${encodeURIComponent(title)}`
+			);
 		}, 650);
 	};
 
@@ -140,10 +196,11 @@ const GraphPage: React.FC = () => {
 			ref={universeRef}
 			galaxies={themes}
 			galaxyArticles={galaxyArticles}
+			galaxyArticleEntries={galaxyArticleEntries}
 			autoRotate
 			onSunSelect={handleSunSelect}
 		/>
-	), [themes, galaxyArticles]);
+	), [themes, galaxyArticles, galaxyArticleEntries]);
 
 	return (
 		<div className={`space-wrapper ${transitioning ? 'jump-out' : ''}`}>

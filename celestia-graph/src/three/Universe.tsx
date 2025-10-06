@@ -10,6 +10,7 @@ interface UniverseProps {
 	onSunSelect?: (data: { galaxy: string; sunIndex: number; article?: string }) => void;
 	galaxies?: string[];
 	galaxyArticles?: Record<string, string[]>;
+	galaxyArticleEntries?: Record<string, { title: string; id: string | null }[]>; // NUEVO
 }
 
 export interface UniverseRef {
@@ -70,6 +71,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 	onSunSelect,
 	galaxies: galaxyLabels = ['Tema A', 'Tema B'], // renamed to avoid shadow
 	galaxyArticles = {},
+	galaxyArticleEntries = {}, // NUEVO
 	...rest
 }, ref) => {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -314,6 +316,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			galaxyCenter: THREE.Vector3;
 			tooltip: HTMLDivElement;
 			article?: string;
+			pmcId?: string | null; // NUEVO
 		};
 
 		const suns: SunRuntime[] = [];
@@ -367,6 +370,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 
 		const createSunsForGalaxy = (g: GalaxyRuntime) => {
 			const articles = galaxyArticles[g.labelDiv.textContent || ''] || [];
+			const entries = galaxyArticleEntries[g.labelDiv.textContent || ''] || [];
 			const total = articles.length;
 			const golden = 2.39996323; // ángulo áureo para dispersión
 			const radialMax = g.radius * 0.85;
@@ -399,8 +403,12 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					opacity: '0',
 					transition: 'opacity .25s'
 				});
+				const entry = entries[idx];
+				const tTitle = entry?.title || title;
+				const tId = entry?.id || 'N/A';
 				tooltip.innerHTML = `
-					<span class="dim">${title}</span>
+					<div style="font-weight:600;color:#ffcf7b;margin-bottom:2px;">${tTitle}</div>
+					<div style="font-size:.55rem;letter-spacing:.4px;color:#9bd2ff;">PMC: ${tId}</div>
 				`;
 				sunLayer.appendChild(tooltip);
 
@@ -413,7 +421,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					orbitSpeed: sunParams.orbitSpeed * (0.6 + (idx % 5) * 0.15),
 					galaxyCenter: g.center.clone(),
 					tooltip,
-					article: title
+					article: tTitle,
+					pmcId: entry?.id || null // NUEVO
 				});
 			});
 		};
@@ -711,7 +720,7 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				});
 			}
 		};
-	}, [autoRotate, background, onSunSelect, galaxyArticles, galaxyLabels]); // updated dependency
+	}, [autoRotate, background, onSunSelect, galaxyArticles, galaxyArticleEntries, galaxyLabels]); // updated dependency
 
 	useImperativeHandle(ref, () => ({
 		focusGalaxy: (name: string) => {

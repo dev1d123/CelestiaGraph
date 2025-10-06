@@ -42,8 +42,9 @@ export interface ClusterResponse {
 export interface CombinedGroup {
   index: number;
   labels: string[];
-  articles: string[];
-  // NUEVO: artículos enriquecidos con IDs
+  // Ahora artículos estandarizados como objetos { title, id }
+  articles: ArticleEntry[];
+  // Alias legacy (mantener para código previo)
   articleEntries: ArticleEntry[];
 }
 
@@ -61,6 +62,12 @@ export interface ChatAPIResponse {
   data: any; // antes string
 }
 
+// NUEVO: interface resultado grupos de artículos con IDs ya presentes
+interface ArticleGroupsResult {
+  titles: string[][];
+  entries: ArticleEntry[][];
+}
+
 // (Opcional) esquema zod si decides validar (ajusta campos)
 // const ClusterItemSchema = z.object({
 //   id: z.string(),
@@ -76,8 +83,6 @@ export interface ChatAPIResponse {
 
 class ApiService {
   private client: AxiosInstance;
-  // NUEVO: cache simple para títulos -> id
-  private titleIdCache = new Map<string, string | null>();
 
   constructor() {
     this.client = axios.create({
@@ -233,100 +238,78 @@ class ApiService {
     return norm;
   }
 
-  async getArticleGroups(signal?: AbortSignal): Promise<string[][]> {
+  // REEMPLAZADO: ahora devuelve ArticleGroupsResult con títulos + entries (title,id)
+  async getArticleGroups(signal?: AbortSignal): Promise<ArticleGroupsResult> {
     const textResp = await axios.get(ARTICLES_URL, { signal, responseType: 'text' });
     const rawText: string = textResp.data;
     console.log('[ApiService] Articles raw TEXT length:', rawText?.length);
     let parsed: any = rawText;
     try {
       parsed = JSON.parse(rawText);
-      console.log('[ApiService] Articles parsed JSON keys:', typeof parsed === 'object' ? Object.keys(parsed) : 'n/a');
+      console.log('[ApiService] Articles parsed JSON type:', typeof parsed);
     } catch {
-      console.warn('[ApiService] Articles JSON.parse failed, keeping text');
+      console.warn('[ApiService] Articles JSON.parse failed');
+      return { titles: [], entries: [] };
     }
-    const root = this.extractRootStructure(parsed);
-    const norm = this.normalizeGroups(root, 'articles');
-    console.log('[ApiService] Normalized article groups length:', norm.length, 'example first group:', norm[0]);
-    return norm;
-  }
 
-  // NUEVO: obtiene id por título (con cache)
-  async getIdByTitle(title: string, signal?: AbortSignal): Promise<string | null> {
-    const clean = (title || '').trim();
-    if (!clean) return null;
-    if (this.titleIdCache.has(clean)) return this.titleIdCache.get(clean)!;
-    try {
-      const { data } = await axios.get(ID_BY_TITLE_URL, { params: { title: clean }, signal });
-      // Intentos de normalización
-      let id: any = null;
-      if (typeof data === 'string') {
-        // si la API devolviera texto simple
-        id = data;
-      } else if (data && typeof data === 'object') {
-        // posibles claves
-        id = (data as any).id
-          ?? (data as any).article_id
-          ?? (data as any).uid
-          ?? (data as any).data?.id
-          ?? null;
+    // Se espera objeto con claves numéricas -> arrays de objetos { "Título": "ID" }
+    const titles: string[][] = [];
+    const entries: ArticleEntry[][] = [];
+
+    if (parsed && typeof parsed === 'object') {
+      const numericKeys = Object.keys(parsed).filter(k => !isNaN(Number(k))).sort((a, b) => Number(a) - Number(b));
+      for (const k of numericKeys) {
+        const groupRaw = parsed[k];
+        const groupTitles: string[] = [];
+        const groupEntries: ArticleEntry[] = [];
+        if (Array.isArray(groupRaw)) {
+            for (const item of groupRaw) {
+              if (item && typeof item === 'object' && !Array.isArray(item)) {
+                // Tomar el primer par clave-valor (asumiendo un único título por objeto)
+                const [[title, id]] = Object.entries(item);
+                if (typeof title === 'string') {
+                  groupTitles.push(title);
+                  groupEntries.push({ title, id: id != null ? String(id) : null });
+                }
+              } else if (typeof item === 'string') {
+                // fallback si viniera como string
+                groupTitles.push(item);
+                groupEntries.push({ title: item, id: null });
+              }
+            }
+        }
+        titles.push(groupTitles);
+        entries.push(groupEntries);
       }
-      if (id != null) id = String(id);
-      this.titleIdCache.set(clean, id);
-      return id;
-    } catch (e) {
-      console.warn('[ApiService] getIdByTitle fallo para:', clean, e);
-      this.titleIdCache.set(clean, null);
-      return null;
     }
+
+    console.log('[ApiService] Parsed article groups -> groups:', titles.length);
+    return { titles, entries };
   }
 
-  // NUEVO: limitador simple de concurrencia para resolver muchos títulos
-  private async fetchIdsForTitles(titles: string[], signal?: AbortSignal, concurrency = 6): Promise<Map<string, string | null>> {
-    const unique = Array.from(new Set(titles.map(t => t.trim()).filter(Boolean)));
-    const result = new Map<string, string | null>();
-    let idx = 0;
-    const worker = async () => {
-      while (idx < unique.length) {
-        const current = unique[idx++];
-        if (result.has(current)) continue;
-        const id = await this.getIdByTitle(current, signal);
-        result.set(current, id);
-      }
-    };
-    const workers = Array.from({ length: Math.min(concurrency, unique.length) }, () => worker());
-    await Promise.all(workers);
-    return result;
-  }
-
-  // Merge final
+  // ACTUALIZADO getCombinedGroups para usar los IDs ya provistos
   async getCombinedGroups(signal?: AbortSignal): Promise<CombinedGroup[]> {
-    const [labelsGroups, articleGroups] = await Promise.all([
+    const [labelsGroups, articleGroupsResult] = await Promise.all([
       this.getUnigramGroups(signal),
       this.getArticleGroups(signal)
     ]);
-    console.log('[ApiService] Debug sizes -> labels:', labelsGroups.length, 'articles:', articleGroups.length);
 
-    // NUEVO: recolectar todos los títulos para resolución de IDs
-    const allTitles = articleGroups.flatMap(g => g);
-    const idMap = await this.fetchIdsForTitles(allTitles, signal);
-    console.log('[ApiService] IDs resueltos (count):', idMap.size);
+    const { titles: articleTitles, entries: articleEntriesAll } = articleGroupsResult;
+    console.log('[ApiService] Debug sizes -> labels:', labelsGroups.length, 'articles:', articleTitles.length);
 
-    const max = Math.max(labelsGroups.length, articleGroups.length);
+    const max = Math.max(labelsGroups.length, articleTitles.length);
     const combined: CombinedGroup[] = [];
     for (let i = 0; i < max; i++) {
-      const rawArticles = articleGroups[i] || [];
-      const articleEntries = rawArticles.map(title => ({
-        title,
-        id: idMap.get(title.trim()) ?? null
-      }));
+      const titles = articleTitles[i] || [];
+      const entries = articleEntriesAll[i] || titles.map(t => ({ title: t, id: null }));
       combined.push({
         index: i,
         labels: labelsGroups[i] || [],
-        articles: rawArticles,          // se conserva para compatibilidad
-        articleEntries                  // nuevo enriquecido
+        articles: entries,       // objetos
+        articleEntries: entries  // alias
       });
     }
-    console.log('[ApiService] Combined groups count (enriched):', combined.length, 'sample:', combined[0]);
+    console.log('[ApiService] Combined groups (with provided IDs in articles) count:', combined.length);
     return combined;
   }
 

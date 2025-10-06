@@ -1,13 +1,9 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import RingsGraph from '../three/RingsGraph'; // nuevo
+import RingsGraph from '../three/RingsGraph';
 import MiniChart3D from '../three/MiniChart3D';
-import { useCart } from '../context/CartContext'; // nuevo
-import '../styles/spaceBackground.css'; // añadido
-import examplePMC from '../assets/example.json'; // simulación local BioC
-
-// Constante modificable para pruebas PMC
-const DEFAULT_PMC_CODE = 'PMC11988870';
+import { useCart } from '../context/CartContext';
+import '../styles/spaceBackground.css';
 
 // Tipo para las referencias que se enviarán al grafo
 type ReferenceNode = {
@@ -26,6 +22,8 @@ const GraphSunPage: React.FC = () => {
 	const navigate = useNavigate();
 	const sun = q.get('sun') || 'Tema';
 	const idx = q.get('idx') || '0';
+	const pmcId = q.get('pmc') || '';
+	const articleTitle = q.get('title') || ''; // NUEVO: título recibido
 
 	const metrics = useMemo(() => Array.from({length:7}, () => 4 + Math.random()*16), []);
 	const [depth, setDepth] = useState(3); // nueva profundidad controlable
@@ -75,71 +73,19 @@ const GraphSunPage: React.FC = () => {
 		};
 	}, []);
 
-	// Simulación: carga local example.json (sin petición HTTP)
+	// Referencias quedan vacías hasta que se integre un fetch real por PMC:
 	useEffect(() => {
-		try {
-			console.group('[GraphSunPage] Simulated PMC BioC payload');
-			console.log('Using DEFAULT_PMC_CODE:', DEFAULT_PMC_CODE);
-			console.log('Full raw object (example.json):', examplePMC);
-
-			const firstCollection: any = Array.isArray(examplePMC) ? examplePMC[0] : null;
-			const firstDoc = firstCollection?.documents?.[0];
-			if (firstDoc) {
-				console.log('Document ID:', firstDoc.id);
-				const titlePassage = firstDoc.passages?.find((p: any) => p.infons?.section_type === 'TITLE')
-					|| firstDoc.passages?.[0];
-				const abstractPassage = firstDoc.passages?.find((p: any) => p.infons?.section_type === 'ABSTRACT');
-				console.log('Title:', titlePassage?.text);
-				if (abstractPassage?.text) {
-					const abs = abstractPassage.text;
-					console.log('Abstract (first 300 chars):', abs.slice(0, 300) + (abs.length > 300 ? '...' : ''));
-				}
-				console.log('Total passages:', firstDoc.passages?.length);
-				console.log('License:', firstDoc.passages?.[0]?.infons?.license);
-
-				// -------- NUEVO: extracción de referencias --------
-				const refPassages = (firstDoc.passages || []).filter(
-					(p: any) => p?.infons?.section_type === 'REF' && p?.infons?.type === 'ref'
-				);
-
-				const referencias = refPassages.map((p: any, i: number) => {
-					const inf = p.infons || {};
-					const authorKeys = Object.keys(inf)
-						.filter(k => /^name_\d+$/.test(k))
-						.sort((a, b) => parseInt(a.split('_')[1], 10) - parseInt(b.split('_')[1], 10));
-
-					const autores = authorKeys.map(k => {
-						const raw = String(inf[k] || '');
-						const surnameMatch = raw.match(/surname:([^;]+)/i);
-						const givenMatch = raw.match(/given-names:([^;]+)/i);
-						const surname = surnameMatch ? surnameMatch[1].trim() : '';
-						const given = givenMatch ? givenMatch[1].trim() : '';
-						return (given && surname) ? `${given} ${surname}` : (surname || raw);
-					});
-
-					return {
-						id: String(i),
-						nombre: p.text?.trim() || '',
-						autores,
-						fecha: inf.year || inf['pub-id_year'] || inf.date || null
-					};
-				});
-
-				// Guardar en estado para usar en RingsGraph
-				setReferences(referencias);
-				// Logs existentes
-				console.log('[GraphSunPage] Total referencias encontradas:', referencias.length);
-				console.log('[GraphSunPage] Referencias (nombre, autores, fecha):', referencias);
-				console.log('[GraphSunPage] Referencias JSON string:', JSON.stringify(referencias, null, 2));
-				// ---------------------------------------------------
-			} else {
-				console.warn('No document found in example.json structure.');
-			}
-			console.groupEnd();
-		} catch (e) {
-			console.error('[GraphSunPage] Error simulating PMC load:', e);
-		}
+		setReferences([]); // placeholder
 	}, []);
+
+	// Log PMC con formato requerido
+	useEffect(() => {
+		if (pmcId) {
+			console.log('->>>>>>>>>>>>>>>' + pmcId);
+		} else {
+			console.log('->>>>>>>>>>>>>>>(sin_pmc)');
+		}
+	}, [pmcId]);
 
 	const handleAdd = () => {
 		const now = new Date();
@@ -193,7 +139,7 @@ const GraphSunPage: React.FC = () => {
 			}}>
 				{/* Visual principal (sin force graph) */}
 				<RingsGraph
-					centerLabel={sun}
+					centerLabel={articleTitle || sun} // usar título si existe
 					depth={depth}
 					mode={showRef ? 'reference' : 'similar'}
 					references={references} // NUEVO
@@ -289,11 +235,12 @@ const GraphSunPage: React.FC = () => {
 				}}>
 					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Panel de Datos</h3>
 					<ul style={{listStyle:'none',padding:0, margin:0, fontSize:'.63rem', letterSpacing:'.4px', lineHeight:1.55}}>
+						<li><strong style={{color:'#ffd28a'}}>Artículo:</strong> {articleTitle || '(sin título)'}</li>
+						<li><strong style={{color:'#ffd28a'}}>PMC:</strong> {pmcId || 'N/A'}</li>
+						<li><strong style={{color:'#ffd28a'}}>Cluster:</strong> {sun}</li>
+						<li><strong style={{color:'#ffd28a'}}>Indice en cluster:</strong> {idx}</li>
 						<li><strong style={{color:'#ffd28a'}}>Tipo Grafo:</strong> DAG jerárquico</li>
 						<li><strong style={{color:'#ffd28a'}}>Profundidad Actual:</strong> {depth}</li>
-						<li><strong style={{color:'#ffd28a'}}>Generación:</strong> Procedural pseudo-aleatoria</li>
-						<li><strong style={{color:'#ffd28a'}}>Motor Fuerzas:</strong> 3d-force-graph (d3-force)</li>
-						<li><strong style={{color:'#ffd28a'}}>Interacción:</strong> Hover dinámico / ajuste profundidad</li>
 					</ul>
 					<div style={{
 						marginTop:'auto',
