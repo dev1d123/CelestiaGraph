@@ -7,7 +7,7 @@ import { setCameraState, getCameraState } from '../state/cameraStore';
 interface UniverseProps {
 	autoRotate?: boolean;
 	background?: string;
-	onSunSelect?: (data: { galaxy: string; sunIndex: number; article?: string }) => void;
+	onSunSelect?: (data: { galaxy: string; sunIndex: number; title?: string; pmcId?: string | null }) => void; // actualizado
 	galaxies?: string[];
 	galaxyArticles?: Record<string, string[]>;
 	galaxyArticleEntries?: Record<string, { title: string; id: string | null }[]>; // NUEVO
@@ -317,6 +317,8 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			tooltip: HTMLDivElement;
 			article?: string;
 			pmcId?: string | null; // NUEVO
+			localIndex: number; // NUEVO índice dentro de su galaxia
+			title: string;
 		};
 
 		const suns: SunRuntime[] = [];
@@ -405,10 +407,10 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 				});
 				const entry = entries[idx];
 				const tTitle = entry?.title || title;
-				const tId = entry?.id || 'N/A';
+				const tId = entry?.id || null;
 				tooltip.innerHTML = `
 					<div style="font-weight:600;color:#ffcf7b;margin-bottom:2px;">${tTitle}</div>
-					<div style="font-size:.55rem;letter-spacing:.4px;color:#9bd2ff;">PMC: ${tId}</div>
+					<div style="font-size:.55rem;letter-spacing:.4px;color:#9bd2ff;">PMC: ${tId || 'N/A'}</div>
 				`;
 				sunLayer.appendChild(tooltip);
 
@@ -422,7 +424,9 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 					galaxyCenter: g.center.clone(),
 					tooltip,
 					article: tTitle,
-					pmcId: entry?.id || null // NUEVO
+					pmcId: tId,
+					localIndex: idx,    // NUEVO
+					title: tTitle        // NUEVO
 				});
 			});
 		};
@@ -469,17 +473,16 @@ const Universe = forwardRef<UniverseRef, UniverseProps>(({
 			const sunHits = raycaster.intersectObjects(sunCores, false);
 			if (sunHits.length) {
 				const obj = sunHits[0].object as THREE.Mesh;
-				const sunIdx = suns.findIndex(s => s.core === obj);
-				if (sunIdx >= 0 && suns[sunIdx]) {
-					const gLabel = runtimeGalaxies.find(g => g.center.distanceTo(suns[sunIdx].galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
-					if (hoverRing) {
-						scene.remove(hoverRing);
-						hoverRing.geometry.dispose();
-						(hoverRing.material as THREE.Material).dispose();
-						hoverRing = null;
-					}
-					if (typeof (onSunSelect) === 'function') {
-						onSunSelect({ galaxy: gLabel, sunIndex: sunIdx, article: suns[sunIdx].article });
+				const sunRuntime = suns.find(s => s.core === obj);
+				if (sunRuntime) {
+					const gLabel = runtimeGalaxies.find(g => g.center.distanceTo(sunRuntime.galaxyCenter) < g.radius + 0.01)?.labelDiv.textContent || 'Tema';
+					if (typeof onSunSelect === 'function') {
+						onSunSelect({
+							galaxy: gLabel,
+							sunIndex: sunRuntime.localIndex,         // índice real dentro de la galaxia
+							title: sunRuntime.title,
+							pmcId: sunRuntime.pmcId
+						});
 					}
 					return;
 				}

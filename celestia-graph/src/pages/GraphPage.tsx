@@ -62,7 +62,7 @@ const curatedFallbacks = [
 
 const GraphPage: React.FC = () => {
 	const navigate = useNavigate();
-	const [pendingSun, setPendingSun] = useState<{ galaxy: string; sunIndex: number } | null>(null);
+	const [pendingSun, setPendingSun] = useState<{ galaxy: string; sunIndex: number; title?: string; pmcId?: string | null } | null>(null);
 	const [transitioning, setTransitioning] = useState(false);
 	const NAVBAR_HEIGHT = 56;
 	const GRAPH_NAVBAR_HEIGHT = 50;
@@ -151,37 +151,35 @@ const GraphPage: React.FC = () => {
 		t.toLowerCase().includes(searchTerm.toLowerCase())
 	);
 
-	const handleSunSelect = (data: { galaxy: string; sunIndex: number }) => {
+	const handleSunSelect = (data: { galaxy: string; sunIndex: number; title?: string; pmcId?: string | null }) => {
 		setPendingSun(data);
 	};
 
 	const confirmGo = () => {
 		if (!pendingSun) return;
 		setTransitioning(true);
-		let pmcId = '';
-		let title = '';
-		const gIdx = galaxyGroupIndex[pendingSun.galaxy];
-		if (gIdx != null) {
-			const group = groups[gIdx];
-			const articleObjs = (group.articles || group.articleEntries || []) as any[];
-			const chosen = articleObjs[pendingSun.sunIndex];
-			if (chosen) {
-				title = chosen.title || '';
-				pmcId = chosen.id || '';
+		let { title = '', pmcId = '' } = pendingSun;
+		// Fallback (solo si no vino desde Universe)
+		if ((!title || !pmcId) && galaxyGroupIndex[pendingSun.galaxy] != null) {
+			const group = groups[galaxyGroupIndex[pendingSun.galaxy]];
+			const entry = group?.articles?.[pendingSun.sunIndex];
+			if (entry) {
+				title = title || entry.title;
+				pmcId = pmcId || entry.id || '';
 			}
-			console.log('[GraphPage] Navigation resolved:', {
-				galaxy: pendingSun.galaxy,
-				sunIndex: pendingSun.sunIndex,
-				title,
-				pmcId
-			});
 		}
+		console.log('[GraphPage] Navigation resolved (routing with cached data):', {
+			galaxy: pendingSun.galaxy,
+			sunIndex: pendingSun.sunIndex,
+			title,
+			pmcId
+		});
 		setTimeout(() => {
 			navigate(
 				`/graph-sun?sun=${encodeURIComponent(pendingSun.galaxy)}&idx=${pendingSun.sunIndex}` +
-				`&pmc=${encodeURIComponent(pmcId)}&title=${encodeURIComponent(title)}`
+				`&pmc=${encodeURIComponent(pmcId || '')}&title=${encodeURIComponent(title || '')}`
 			);
-		}, 650);
+		}, 450);
 	};
 
 	const cancelGo = () => setPendingSun(null);
