@@ -70,32 +70,46 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
     setMousePos({ x: e.clientX, y: e.clientY });
   }, []);
 
-  const makeLabelSprite = (lines: string[]) => {
+  const makeLabelSprite = (title: string) => {
+    // Transparent canvas (no square / box)
+    const wrapWords = (text: string, max = 42) => {
+      const words = text.split(/\s+/);
+      const lines: string[] = [];
+      let cur = '';
+      for (const w of words) {
+        if ((cur + ' ' + w).trim().length > max) {
+          if (cur) lines.push(cur);
+          cur = w;
+        } else {
+          cur = (cur ? cur + ' ' : '') + w;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines.slice(0, 4);
+    };
+    const lines = wrapWords(title);
+    const paddingX = 4;
+    const paddingY = 2;
+    const lineHeight = 18;
+    const font = '600 16px system-ui, sans-serif';
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
-    const padding = 8;
-    ctx.font = '500 20px system-ui, sans-serif';
-    const width = Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2;
-    const lineHeight = 22;
-    const height = lineHeight * lines.length + padding * 2;
+    ctx.font = font;
+    const width = Math.max(...lines.map(l => ctx.measureText(l).width)) + paddingX * 2;
+    const height = lineHeight * lines.length + paddingY * 2;
     canvas.width = width;
     canvas.height = height;
-    ctx.fillStyle = 'rgba(20,40,60,0.85)';
-    ctx.strokeStyle = 'rgba(90,160,220,0.5)';
-    ctx.lineWidth = 2;
-    ctx.roundRect(1, 1, width - 2, height - 2, 10);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#d6f0ff';
-    ctx.font = '500 20px system-ui, sans-serif';
+    // No background / border -> only text
+    ctx.font = font;
+    ctx.fillStyle = '#e9f4ff';
     lines.forEach((l, i) => {
-      ctx.fillText(l, padding, padding + (i + 0.8) * lineHeight);
+      ctx.fillText(l, paddingX, paddingY + (i + 0.8) * lineHeight);
     });
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
     const mat = new THREE.SpriteMaterial({ map: tex, depthWrite: false, transparent: true });
     const sprite = new THREE.Sprite(mat);
-    const scale = 0.8;
+    const scale = 0.65;
     sprite.scale.set(width * scale, height * scale, 1);
     return sprite;
   };
@@ -120,40 +134,24 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
   const showLabelFor = (node: RingNode) => {
     ensureGroup();
     clearLabel();
-    const sprite = makeLabelSprite([
-      node.title,
-      `E:${node.energy}  S:${node.score}`
-    ]);
-    sprite.position.copy(node.mesh.position.clone().add(new THREE.Vector3(0, 38, 0)));
+    const sprite = makeLabelSprite(node.title);
+    // Radial offset away from center so it does not overlap the sphere
+    if (centerRef.current) {
+      const fromCenter = node.mesh.position.clone().sub(centerRef.current.position);
+      if (fromCenter.lengthSq() > 0.0001) {
+        fromCenter.normalize().multiplyScalar(26); // distance away from node
+      }
+      sprite.position.copy(
+        node.mesh.position.clone()
+          .add(fromCenter)
+          .add(new THREE.Vector3(0, 6, 0)) // slight upward lift
+      );
+    } else {
+      sprite.position.copy(node.mesh.position.clone().add(new THREE.Vector3(0, 30, 0)));
+    }
     labelSpriteRef.current = sprite;
     groupRef.current!.add(sprite);
   };
-
-// Helper nuevo: genera textura radial suave (sin borde cuadrado)
-const createHaloTexture = (color: THREE.Color, resolution = 256) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = resolution;
-  const ctx = canvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(
-    resolution / 2,
-    resolution / 2,
-    0,
-    resolution / 2,
-    resolution / 2,
-    resolution / 2
-  );
-  const rgba = `rgba(${Math.round(color.r * 255)},${Math.round(color.g * 255)},${Math.round(color.b * 255)}`;
-  grad.addColorStop(0, `${rgba},0.85)`);
-  grad.addColorStop(0.35, `${rgba},0.45)`);
-  grad.addColorStop(0.65, `${rgba},0.15)`);
-  grad.addColorStop(1, `${rgba},0)`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, resolution, resolution);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.anisotropy = 4;
-  tex.needsUpdate = true;
-  return tex;
-};
 
   const buildGraph = () => {
     ensureGroup();
@@ -188,14 +186,102 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
     centerRef.current.add(glow);
 
     if (mode === 'similar') {
-      // --- comportamiento previo para similares (no tocar) ---
-      const rings = Math.min(Math.max(depth, 2), 4);
+      ensureGroup();
+      // Nuevo: usar referencias reales si vienen (GraphSunPage las pasa con titles)
+      const refs = references || [];
+      const totalRefs = refs.length;
+      if (totalRefs === 0) {
+        // fallback al comportamiento previo (placeholders)
+        // ...existing original similar branch code (sin cambios)...
+        const rings = Math.min(Math.max(depth, 2), 4);
+        const w = (containerRef.current?.clientWidth || window.innerWidth);
+        const h = (containerRef.current?.clientHeight || window.innerHeight);
+        const baseRadius = Math.min(w, h) * 0.35;
+        const ringStep = baseRadius / (rings + 0.6);
+        const ringLayer = new THREE.Group();
+        ringLayer.position.y = CENTER_Y_OFFSET;
+        groupRef.current!.add(ringLayer);
+        for (let r = 0; r < rings; r++) {
+          const ringRadius = (r + 1) * ringStep * 0.62 + 55;
+          const torusGeo = new THREE.TorusGeometry(ringRadius, 0.65 + r * 0.10, 16, 96);
+          const torusMat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.78 - r * 0.07, 0.55, 0.55),
+            transparent: true,
+            opacity: 0.16 + r * 0.035,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+          });
+          ringLayer.add(new THREE.Mesh(torusGeo, torusMat));
+        }
+        for (let r = 0; r < rings; r++) {
+          const count = ringCounts[r];
+          const ringGroup = new THREE.Group();
+          ringGroup.userData.ringIndex = r;
+          ringGroup.position.y = CENTER_Y_OFFSET;
+          groupRef.current!.add(ringGroup);
+          for (let i = 0; i < count; i++) {
+            const angle = (i / count) * Math.PI * 2;
+            const ringRadius = (r + 1) * ringStep * 0.62 + 55;
+            const x = Math.cos(angle) * ringRadius;
+            const yLocal = Math.sin(angle) * ringRadius;
+            const geo = new THREE.SphereGeometry(10, 40, 40);
+            const hue = 0.82 - r * 0.07;
+            const color = new THREE.Color().setHSL(hue, 0.65, 0.5);
+            const emiss = new THREE.Color().setHSL(hue, 0.65, 0.14 + r * 0.03);
+            const mat = new THREE.MeshStandardMaterial({ color, emissive: emiss, metalness: 0.45, roughness: 0.38 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, yLocal, 0);
+            mesh.userData.baseEmissive = emiss.clone();
+            mesh.userData.ring = r;
+            const tGeo = new THREE.TorusGeometry(13, 1.2, 12, 48);
+            const tMat = new THREE.MeshBasicMaterial({
+              color: color.clone().offsetHSL(0, 0, 0.15),
+              transparent: true,
+              opacity: 0.4,
+              blending: THREE.AdditiveBlending
+            });
+            const torus = new THREE.Mesh(tGeo, tMat);
+              torus.rotation.x = Math.PI / 2.2;
+            mesh.add(torus);
+            const haloSprite = new THREE.Sprite((centerRef.current as any) ? undefined : glowMat.clone());
+            haloSprite.material = (haloSprite.material as THREE.SpriteMaterial).clone();
+            (haloSprite.material as THREE.SpriteMaterial).color = color.clone();
+            (haloSprite.material as THREE.SpriteMaterial).opacity = 0.25;
+            haloSprite.scale.set(70, 70, 1);
+            mesh.add(haloSprite);
+            ringGroup.add(mesh);
+            nodesRef.current.push({
+              id: `R${r}-N${i}`,
+              ring: r,
+              angle,
+              mesh,
+              energy: Math.round(40 + Math.random() * 460),
+              score: parseFloat((Math.random() * 100).toFixed(1)),
+              title: `Sim-${r + 1}.${i + 1}`,
+              radius: ringRadius
+            });
+          }
+        }
+        return;
+      }
+
+      // NUEVO: distribución real basada en titles (hasta capacidad total 60)
+      const capped = refs.slice(0, ringCounts.reduce((a,b)=>a+b,0)); // max 60
+      // decidir número de anillos mínimo que cubra total
+      let ringsNeeded = 1;
+      let acc = ringCounts[0];
+      while (acc < capped.length && ringsNeeded < 4) {
+        ringsNeeded++;
+        acc += ringCounts[ringsNeeded - 1];
+      }
+      const rings = ringsNeeded;
+
       const w = (containerRef.current?.clientWidth || window.innerWidth);
       const h = (containerRef.current?.clientHeight || window.innerHeight);
       const baseRadius = Math.min(w, h) * 0.35;
       const ringStep = baseRadius / (rings + 0.6);
-      const ringZGap = 85;
 
+      // Dibujar toros
       const ringLayer = new THREE.Group();
       ringLayer.position.y = CENTER_Y_OFFSET;
       groupRef.current!.add(ringLayer);
@@ -205,68 +291,81 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
         const torusMat = new THREE.MeshBasicMaterial({
           color: new THREE.Color().setHSL(0.78 - r * 0.07, 0.55, 0.55),
           transparent: true,
-            opacity: 0.16 + r * 0.035,
+          opacity: 0.16 + r * 0.035,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         });
         ringLayer.add(new THREE.Mesh(torusGeo, torusMat));
       }
 
+      // Distribución secuencial
+      let cursor = 0;
       for (let r = 0; r < rings; r++) {
-        const count = ringCounts[r];
+        const capacity = ringCounts[r];
+        const remaining = capped.length - cursor;
+        const count = Math.min(capacity, remaining);
         const ringGroup = new THREE.Group();
         ringGroup.userData.ringIndex = r;
         ringGroup.position.y = CENTER_Y_OFFSET;
         groupRef.current!.add(ringGroup);
+
         for (let i = 0; i < count; i++) {
+          const ref = capped[cursor + i];
           const angle = (i / count) * Math.PI * 2;
-            const ringRadius = (r + 1) * ringStep * 0.62 + 55;
+          const ringRadius = (r + 1) * ringStep * 0.62 + 55;
           const x = Math.cos(angle) * ringRadius;
           const yLocal = Math.sin(angle) * ringRadius;
-          const z = 0;
 
           const geo = new THREE.SphereGeometry(10, 40, 40);
-          const hue = 0.82 - r * 0.07;
+          const hue = 0.1 + 0.55 * (cursor + i) / Math.max(capped.length - 1, 1);
           const color = new THREE.Color().setHSL(hue, 0.65, 0.5);
-          const emiss = new THREE.Color().setHSL(hue, 0.65, 0.14 + r * 0.03);
+          const emiss = new THREE.Color().setHSL(hue, 0.65, 0.18);
           const mat = new THREE.MeshStandardMaterial({
-            color, emissive: emiss, metalness: 0.45, roughness: 0.38
+            color,
+            emissive: emiss,
+            metalness: 0.42,
+            roughness: 0.38
           });
           const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(x, yLocal, z);
+          mesh.position.set(x, yLocal, 0);
           mesh.userData.baseEmissive = emiss.clone();
           mesh.userData.ring = r;
 
-          const tGeo = new THREE.TorusGeometry(13, 1.2, 12, 48);
-          const tMat = new THREE.MeshBasicMaterial({
+          const ringDecorGeo = new THREE.TorusGeometry(13, 1.2, 12, 48);
+          const ringDecorMat = new THREE.MeshBasicMaterial({
             color: color.clone().offsetHSL(0, 0, 0.15),
             transparent: true,
-            opacity: 0.4,
+            opacity: 0.42,
             blending: THREE.AdditiveBlending
           });
-          const torus = new THREE.Mesh(tGeo, tMat);
+          const torus = new THREE.Mesh(ringDecorGeo, ringDecorMat);
           torus.rotation.x = Math.PI / 2.2;
           mesh.add(torus);
 
-          const haloSprite = new THREE.Sprite(glowMat.clone());
-          haloSprite.material = (haloSprite.material as THREE.SpriteMaterial).clone();
-          (haloSprite.material as THREE.SpriteMaterial).color = color.clone();
-          (haloSprite.material as THREE.SpriteMaterial).opacity = 0.25;
-          haloSprite.scale.set(70, 70, 1);
-          mesh.add(haloSprite);
+          const halo = new THREE.Sprite((centerRef.current as any) ? undefined : glowMat.clone());
+          halo.material = (halo.material as THREE.SpriteMaterial).clone();
+          (halo.material as THREE.SpriteMaterial).color = color.clone();
+          (halo.material as THREE.SpriteMaterial).opacity = 0.25;
+          halo.scale.set(70, 70, 1);
+          mesh.add(halo);
 
           ringGroup.add(mesh);
+
+          const titleRaw = (ref.nombre || ref.title || ref.label || ref.name || '').trim() || `Article ${cursor + i + 1}`;
           nodesRef.current.push({
-            id: `R${r}-N${i}`,
-            ring: r,
+            id: `SIM-${cursor + i}`,
+              ring: r,
             angle,
             mesh,
-            energy: Math.round(40 + Math.random() * 460),
-            score: parseFloat((Math.random() * 100).toFixed(1)),
-            title: `Sim-${r + 1}.${i + 1}`,
-            radius: ringRadius
+            energy: 0,
+            score: 0,
+            title: titleRaw.slice(0, 80), // truncado ligero
+            radius: ringRadius,
+            meta: ref // guardamos por consistencia (aunque similar)
           });
         }
+        cursor += count;
+        if (cursor >= capped.length) break;
       }
       return;
     }
@@ -513,19 +612,20 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
         let newHover: RingNode | null = null;
         if (first) newHover = nodesRef.current.find(n => n.mesh === first) || null;
         if (newHover !== hoveredRef.current) {
-          // restaurar previo
-            if (hoveredRef.current) {
-              const pm = hoveredRef.current.mesh.material as THREE.MeshStandardMaterial;
-              pm.emissive.copy(hoveredRef.current.mesh.userData.baseEmissive);
-              hoveredRef.current.mesh.scale.multiplyScalar(1 / 1.18);
-            }
+          if (hoveredRef.current) {
+            const pm = hoveredRef.current.mesh.material as THREE.MeshStandardMaterial;
+            pm.emissive.copy(hoveredRef.current.mesh.userData.baseEmissive);
+            hoveredRef.current.mesh.scale.setScalar(
+              hoveredRef.current.mesh.scale.x / 1.18
+            );
+          }
           hoveredRef.current = newHover;
-
           if (newHover) {
+            // pointer cursor
+            if (containerRef.current) containerRef.current.style.cursor = 'pointer';
             const m = newHover.mesh.material as THREE.MeshStandardMaterial;
-            m.emissive = m.emissive.clone().addScalar(0.5);
+            m.emissive = m.emissive.clone().addScalar(0.45);
             newHover.mesh.scale.multiplyScalar(1.18);
-
             if (mode === 'similar') {
               showLabelFor(newHover);
               onNodeHover?.({
@@ -537,11 +637,12 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
               });
               setHoverRef(null);
             } else {
-              clearLabel(); // no sprite para referencias
+              clearLabel();
               setHoverRef(newHover.meta || null);
               onNodeHover?.(null);
             }
           } else {
+            if (containerRef.current) containerRef.current.style.cursor = 'grab';
             clearLabel();
             setHoverRef(null);
             onNodeHover?.(null);
@@ -575,6 +676,11 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
     if (mode === 'similar') onNodeHover?.(null);
   }, [depth, mode, centerLabel, references]); // NUEVO: references
 
+  // default cursor on mount
+  useEffect(() => {
+    if (containerRef.current) containerRef.current.style.cursor = 'grab';
+  }, []);
+
   return (
     <div style={{ position: 'absolute', inset: 0 }} onMouseMove={onMove}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
@@ -586,28 +692,28 @@ const createHaloTexture = (color: THREE.Color, resolution = 256) => {
             top: mousePos.y + 14,
             left: mousePos.x + 14,
             zIndex: 250,
-            maxWidth: '300px',
+            maxWidth: '320px',
             background: 'linear-gradient(140deg,#101b27,#1b2c3d)',
             border: '1px solid #ffcf7b44',
-            borderRadius: '.7rem',
-            padding: '.6rem .75rem .7rem',
+            borderRadius: '.65rem',
+            padding: '.55rem .7rem .6rem',
             color: '#e9f4ff',
-            fontSize: '.63rem',
-            lineHeight: 1.4,
-            letterSpacing: '.42px',
-            boxShadow: '0 8px 28px -10px #000'
+            fontSize: '.6rem',
+            lineHeight: 1.35,
+            letterSpacing: '.4px',
+            boxShadow: '0 8px 26px -12px #000'
           }}
         >
-          <div style={{ fontWeight: 600, color: '#ffd28a', marginBottom: '.35rem' }}>
+          <div style={{ fontWeight: 600, color: '#ffd28a', marginBottom: '.3rem' }}>
             {hoverRef.nombre}
           </div>
-          <div style={{ opacity: .85, marginBottom: '.25rem' }}>
-            <strong>Autores: </strong>
+          <div style={{ opacity: .85, marginBottom: '.2rem' }}>
+            <strong>Authors: </strong>
             {hoverRef.autores.slice(0, 8).join(', ')}
             {hoverRef.autores.length > 8 && ' …'}
           </div>
           <div style={{ opacity: .7 }}>
-            <strong>Año: </strong>{hoverRef.fecha || 'N/A'}
+            <strong>Year: </strong>{hoverRef.fecha || 'N/A'}
           </div>
         </div>
       )}

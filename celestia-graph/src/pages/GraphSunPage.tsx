@@ -10,7 +10,11 @@ import { fetchKeywordsById, fetchMetadataById, fetchClusterNumber, fetchBigramKe
 type ReferenceNode = {
 	id: string;
 	nombre: string;
-	autores: string[];
+	name?: string;
+	label?: string;
+	title?: string;
+	pmcId?: string | null;
+	autores?: string[];  // ahora opcional para permitir hover solo título
 	fecha: string | null;
 };
 
@@ -140,27 +144,85 @@ const GraphSunPage: React.FC = () => {
 		return () => { aborted = true; controller.abort(); };
 	}, [pmcId]);
 
-	// Build node lists for RingsGraph depending on mode
-	const displayNodes = useMemo(() => {
-		if (showRef) return referenceTitles;
-		if (clusterNumber == null) return [];
-		const clusterArr = similarArticlesMap[String(clusterNumber)] || [];
-		return clusterArr
-			.map(a => a.title)
-			.filter(t => t && t !== articleTitle);
-	}, [showRef, referenceTitles, clusterNumber, similarArticlesMap, articleTitle]);
+	// Log cluster articles when clusterNumber & map are ready
+	useEffect(() => {
+		if (clusterNumber == null) {
+			console.log('[GraphSunPage] No clusterNumber yet -> nothing to list');
+			return;
+		}
+		const list = similarArticlesMap[String(clusterNumber)];
+		if (!list || !list.length) {
+			console.log(`[GraphSunPage] Cluster ${clusterNumber} has no articles to list`);
+			return;
+		}
+		console.log(`=== Cluster ${clusterNumber} Articles (${list.length}) ===`);
+		list.forEach(a => {
+			const title = a.title || '(untitled)';
+			console.log('NOMBRE ->', title);
+		});
+		console.log('=== END CLUSTER LIST ===');
+	}, [clusterNumber, similarArticlesMap]);
 
-	// Map displayNodes (array of titles) into ReferenceNode[] expected by RingsGraph
-	const referenceNodes: ReferenceNode[] = useMemo(
-		() =>
-			displayNodes.map((title, i) => ({
-				id: `ref-${showRef ? 'ref' : 'sim'}-${i}`,
+	// Build node lists for RingsGraph depending on mode (RAW titles + meta)
+	const displayNodes = useMemo(() => {
+		const inRef = showRef;
+		const cn = clusterNumber;
+		const clusterArr = !inRef && cn != null
+			? (similarArticlesMap[String(cn)] || [])
+			: [];
+		const titles = inRef
+			? referenceTitles
+			: clusterArr.map(a => a.title).filter(Boolean);
+		console.log('[GraphSunPage] build displayNodes -> mode:',
+			inRef ? 'references' : 'similar',
+			'clusterNumber:', cn,
+			'titlesCount:', titles.length);
+		return titles;
+	}, [showRef, referenceTitles, clusterNumber, similarArticlesMap]);
+
+	// Map to ReferenceNode[] (include multiple alias fields so RingsGraph can pick any)
+	const referenceNodes: ReferenceNode[] = useMemo(() => {
+		const inRef = showRef;
+		let nodes: ReferenceNode[];
+		if (inRef) {
+			nodes = displayNodes.map((title, i) => ({
+				id: `ref-${i}`,
 				nombre: title,
-				autores: [],          // unknown authors from external source -> empty array
-				fecha: null           // no date available
-			})),
-		[displayNodes, showRef]
-	);
+				name: title,
+				label: title,
+				title,
+				pmcId: null,
+				autores: [],
+				fecha: null
+			}));
+		} else {
+			const cn = clusterNumber;
+			const clusterArr = cn != null ? (similarArticlesMap[String(cn)] || []) : [];
+			nodes = clusterArr.map((entry, i) => {
+				const t = entry.title || `Article ${i+1}`;
+				const pid = entry.id || null;
+				return {
+					id: `sim-${i}-${pid ?? 'noid'}`,
+					nombre: t,
+					name: t,
+					label: t,
+					title: t,
+					pmcId: pid,
+					autores: [],      // vacío para hover simple
+					fecha: null
+				};
+			});
+		}
+		console.log('[GraphSunPage] referenceNodes (final) length:', nodes.length, 'mode:', inRef ? 'references' : 'similar');
+		return nodes;
+	}, [displayNodes, showRef, clusterNumber, similarArticlesMap]);
+
+	// Optional: log on toggle
+	useEffect(() => {
+		console.log('[GraphSunPage] mode changed ->', showRef ? 'references' : 'similar',
+			'clusterNumber:', clusterNumber,
+			'similarMapHasKey:', clusterNumber != null && similarArticlesMap[String(clusterNumber)] ? 'yes' : 'no');
+	}, [showRef, clusterNumber, similarArticlesMap]);
 
 	const formattedDate = React.useMemo(() => {
 		if (!metadata?.date) return '';
@@ -254,7 +316,7 @@ const GraphSunPage: React.FC = () => {
 				}}>
 					{justAdded && (
 						<div style={toastStyle('#43e9ff','#081923')}>
-							Elemento añadido a la lista
+							Added to list
 						</div>
 					)}
 					{showRef && (
@@ -264,7 +326,11 @@ const GraphSunPage: React.FC = () => {
 					)}
 					{!showRef && (
 						<div style={toastStyle('#ff3fb4','#2a0f23')}>
-							Similar mode
+							{clusterNumber == null
+								? 'Similar mode (loading cluster...)'
+								: (referenceNodes.length
+									? 'Similar mode'
+									: 'No similar articles in cluster')}
 						</div>
 					)}
 				</div>
@@ -324,7 +390,7 @@ const GraphSunPage: React.FC = () => {
 										{p}
 									</div>
 								)
-								: <div style={{opacity:.55}}>Sin bigrams disponibles.</div>
+								: <div style={{opacity:.55}}>No bigrams.</div>
 							}
 						</div>
 					</div>
@@ -401,8 +467,8 @@ const GraphSunPage: React.FC = () => {
 								color:'#dbe9ff'
 							}}>
 								{loadingMeta
-									? 'Cargando...'
-									: (abstractText || 'Sin abstract disponible.')
+									? 'Loading...'
+									: (abstractText || 'No abstract available.')
 								}
 							</div>
 						</div>
@@ -421,7 +487,7 @@ const GraphSunPage: React.FC = () => {
 								scrollbarWidth:'thin'
 							}}>
 								{loadingMeta
-									? 'Cargando...'
+									? 'Loading...'
 									: (authorsList.length
 										? (
 											<ol style={{
@@ -448,7 +514,7 @@ const GraphSunPage: React.FC = () => {
 												))}
 											</ol>
 										)
-										: 'Sin autores.'
+										: 'No authors.'
 									  )
 								}
 							</div>
@@ -477,7 +543,7 @@ const GraphSunPage: React.FC = () => {
 											{k}
 										</span>
 									))
-									: (loadingMeta ? 'Cargando...' : <span style={{opacity:.55}}>Sin keywords.</span>)
+									: (loadingMeta ? 'Loading...' : <span style={{opacity:.55}}>No keywords.</span>)
 								}
 							</div>
 						</div>
