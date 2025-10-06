@@ -5,6 +5,7 @@ import MiniChart3D from '../three/MiniChart3D';
 import { useCart } from '../context/CartContext';
 import '../styles/spaceBackground.css';
 import { fetchKeywordsById, fetchMetadataById, fetchClusterNumber, fetchBigramKeywords, fetchReferencesById, fetchClusterArticles } from '../services/ApiService';
+import type { ArticleMetadata } from '../services/ApiService'; // FIX: type-only import (antes causaba runtime error)
 
 // Tipo para las referencias que se enviarán al grafo
 type ReferenceNode = {
@@ -34,12 +35,13 @@ const GraphSunPage: React.FC = () => {
 	const [depth, setDepth] = useState(3); // nueva profundidad controlable
 	const { addItem } = useCart(); // nuevo
 	const [justAdded, setJustAdded] = useState(false); // feedback rápido
+	const [hoveredNode, setHoveredNode] = useState<{ id: string; title: string } | null>(null); // NUEVO
 
 	const [navOffset, setNavOffset] = useState(106); // fallback (56+50)
 	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
 	const [showRef, setShowRef] = useState(true); // referencia activa por defecto
 	const [keywords, setKeywords] = useState<string[]>([]);
-	const [metadata, setMetadata] = useState<import('../services/ApiService').ArticleMetadata | null>(null);
+	const [metadata, setMetadata] = useState<ArticleMetadata | null>(null); // simplificado (antes import('../...').ArticleMetadata)
 	const [clusterNumber, setClusterNumber] = useState<number | null>(null);
 	const [bigramMap, setBigramMap] = useState<Record<string, string[]>>({});
 	const [loadingMeta, setLoadingMeta] = useState(false);
@@ -259,6 +261,24 @@ const GraphSunPage: React.FC = () => {
 		}
 	};
 
+	// Añadir a la lista (cart) usando hoveredNode o metadata principal
+	const handleAdd = () => {
+		const baseTitle = hoveredNode?.title || articleTitle || '(untitled)';
+		const baseId = hoveredNode?.id || pmcId || `temp-${Date.now()}`;
+		const meta: ArticleMetadata | null = metadata;
+		addItem({
+			id: baseId,
+			name: baseTitle,
+			date: meta?.date || '',
+			keywords: keywords.join(', '),
+			authors: authorsList.join(', ') || 'Unknown',
+			abstract: abstractText || '',
+			link: pmcId ? `https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId}` : '#'
+		});
+		setJustAdded(true);
+		setTimeout(() => setJustAdded(false), 1800);
+	};
+
 	return (
 		<div
 			className="space-wrapper" // fondo espacial
@@ -283,6 +303,13 @@ const GraphSunPage: React.FC = () => {
 					depth={depth}
 					mode={showRef ? 'reference' : 'similar'}
 					references={referenceNodes.map(node => ({ ...node, autores: node.autores || [] }))}  // Ensure autores is always an array
+					onNodeHover={(info) => {
+						if (info) {
+							setHoveredNode({ id: info.id, title: info.title });
+						} else {
+							setHoveredNode(null);
+						}
+					}}
 				/>
 
 				{/* Toast / mensajes centrados arriba (fuera de HUD laterales) */}
@@ -545,6 +572,8 @@ const GraphSunPage: React.FC = () => {
 						</div>
 					</div>
 					<button
+						onClick={handleAdd}
+						disabled={justAdded}
 						style={{
 							background:'linear-gradient(115deg,#43e9ff 0%,#ff3fb4 50%,#ffb347 100%)',
 							border:'1px solid #4ad4ff',
@@ -554,14 +583,15 @@ const GraphSunPage: React.FC = () => {
 							letterSpacing:'.7px',
 							padding:'.75rem .95rem',
 							borderRadius:'.85rem',
-							cursor:'pointer',
+							cursor: justAdded ? 'default' : 'pointer',
 							position:'relative',
 							overflow:'hidden',
+							opacity: justAdded ? .7 : 1,
 							boxShadow:'0 6px 26px -8px #000, 0 0 0 1px #ffffff10'
 						}}
 					>
 						<span style={{position:'relative', zIndex:2}}>
-							{ justAdded ? 'Added ✔' : 'Add to list...' }
+							{ justAdded ? 'Added ✔' : (hoveredNode ? 'Add hovered node' : 'Add center article') }
 						</span>
 						<div style={{
 							position:'absolute',

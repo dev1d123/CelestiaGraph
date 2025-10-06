@@ -369,7 +369,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
 
           ringGroup.add(mesh);
 
-          const titleRaw = (ref.nombre, '').trim() || `Article ${cursor + i + 1}`;
+          const titleRaw = (ref.nombre || (ref as any).title || (ref as any).label || (ref as any).name || '').toString().trim() || `Article ${cursor + i + 1}`;
           nodesRef.current.push({
             id: `SIM-${cursor + i}`,
               ring: r,
