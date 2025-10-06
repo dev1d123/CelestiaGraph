@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { fetchChat } from '../services/ApiService';
 
 type ChatMsg = {
@@ -331,16 +332,71 @@ const injectStyles = () => {
 };
 
 const ChatBotWidget: React.FC = () => {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>(() => {
     try { const raw = localStorage.getItem(LS_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
   });
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
+  const [clusterNames, setClusterNames] = useState<string[]>([]);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const firstOpenRef = useRef(true);
 
   useEffect(() => { injectStyles(); }, []);
+
+  // Cargar nombres de clusters desde localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('combinedGroupsV1');
+      if (stored) {
+        const groups = JSON.parse(stored);
+        const names: string[] = [];
+        const used = new Set<string>();
+        
+        groups.slice(0, 52).forEach((g: any, idx: number) => {
+          const labels = g.labels || [];
+          const base = labels
+            .filter((w: any) => typeof w === 'string')
+            .map((w: string) => w.trim())
+            .filter((w: string) => /^[A-Za-z]{4,}$/.test(w));
+          const unique = Array.from(new Set(base.map((w: string) => w.toLowerCase())));
+          const tokens: string[] = [];
+          
+          if (unique.length >= 3) {
+            const pool = [...unique];
+            for (let i = 0; i < 3; i++) {
+              const r = Math.floor(Math.random() * pool.length);
+              tokens.push(pool.splice(r, 1)[0]);
+            }
+          } else if (unique.length > 0) {
+            tokens.push(...unique);
+          }
+          
+          while (tokens.length < 3) {
+            tokens.push(`theme${idx}`);
+          }
+          
+          const formatted = tokens.slice(0, 3).map(t => t.charAt(0).toUpperCase() + t.slice(1));
+          let name = formatted.join(', ');
+          
+          if (used.has(name)) {
+            let c = 2;
+            while (used.has(`${name} (${c})`)) c++;
+            name = `${name} (${c})`;
+          }
+          used.add(name);
+          names.push(name);
+        });
+        
+        setClusterNames(names);
+      }
+    } catch (e) {
+      console.warn('[ChatBot] Error loading cluster names:', e);
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(messages));
@@ -350,6 +406,15 @@ const ChatBotWidget: React.FC = () => {
       });
     }
   }, [messages, open]);
+
+  // Navegación automática cuando hay recomendaciones
+  useEffect(() => {
+    if (pendingNavigation) {
+      // Navegar a GraphPage con el cluster ID en la URL
+      navigate(`/graph?cluster=${encodeURIComponent(pendingNavigation)}`);
+      setPendingNavigation(null);
+    }
+  }, [pendingNavigation, navigate]);
 
   const send = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -374,11 +439,28 @@ const ChatBotWidget: React.FC = () => {
     };
     setMessages(m => [...m, botMsg]);
     setPending(false);
+
+    // Si hay recomendaciones, tomar el primer cluster
+    if (resp.action === 'recommendations' && resp.data?.recommended_clusters?.length > 0) {
+      const firstCluster = resp.data.recommended_clusters[0];
+      if (firstCluster.cluster_id) {
+        // Pequeño delay para que el usuario vea el mensaje antes de navegar
+        setTimeout(() => {
+          setPendingNavigation(firstCluster.cluster_id);
+        }, 1500);
+      }
+    }
   };
 
   const clear = () => {
     setMessages([]);
     localStorage.removeItem(LS_KEY);
+  };
+
+  const handleClusterClick = (clusterId: string) => {
+    // Marcar como seleccionado y navegar inmediatamente
+    setSelectedCluster(clusterId);
+    navigate(`/graph?cluster=${encodeURIComponent(clusterId)}`);
   };
 
   const toggle = () => {
@@ -431,7 +513,7 @@ const ChatBotWidget: React.FC = () => {
                   <div className="cg-data-block">
                     {Array.isArray(msg.meta.data.keywords) && msg.meta.data.keywords.length > 0 && (
                       <>
-                        <h5 className="cg-subtitle">Keywords detectadas</h5>
+                        <h5 className="cg-subtitle">Detected Keywords</h5>
                         <div className="cg-keywords">
                           {msg.meta.data.keywords.map((k: string) => (
                             <span key={k} className="cg-chip">{k}</span>
@@ -441,7 +523,7 @@ const ChatBotWidget: React.FC = () => {
                     )}
                     {Array.isArray(msg.meta.data.articles) && msg.meta.data.articles.length > 0 && (
                       <>
-                        <h5 className="cg-subtitle" style={{marginTop:'.75rem'}}>Artículos sugeridos</h5>
+                        <h5 className="cg-subtitle" style={{marginTop:'.75rem'}}>Suggested Articles</h5>
                         <div className="cg-articles">
                           {msg.meta.data.articles.slice(0, 8).map((a: any, i: number) => (
                             <div key={a.pmc_id || i} className="cg-article">
@@ -455,6 +537,73 @@ const ChatBotWidget: React.FC = () => {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </>
+                    )}
+                    {/* Mostrar clusters recomendados */}
+                    {Array.isArray(msg.meta.data.recommended_clusters) && msg.meta.data.recommended_clusters.length > 0 && (
+                      <>
+                        <h5 className="cg-subtitle" style={{marginTop:'.75rem'}}>🎯 Recommended Clusters</h5>
+                        <div className="cg-articles">
+                          {msg.meta.data.recommended_clusters.slice(0, 5).map((cluster: any, i: number) => {
+                            const isSelected = selectedCluster === cluster.cluster_id || (selectedCluster === null && i === 0);
+                            return (
+                              <button
+                                key={cluster.cluster_id || i}
+                                onClick={() => handleClusterClick(cluster.cluster_id)}
+                                className="cg-article"
+                                style={{
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease',
+                                  border: isSelected ? '1px solid #43e9ff' : '1px solid #1f3a53',
+                                  background: isSelected ? 'linear-gradient(125deg,#1a3a50,#152838)' : 'linear-gradient(125deg,#13283b,#102232)',
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  padding: '.55rem .6rem .55rem',
+                                  borderRadius: '.6rem'
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.background = 'linear-gradient(125deg,#1a3a50,#152838)';
+                                  e.currentTarget.style.borderColor = '#43e9ff';
+                                  e.currentTarget.style.transform = 'translateX(4px)';
+                                }}
+                                onMouseOut={(e) => {
+                                  if (!isSelected) {
+                                    e.currentTarget.style.background = 'linear-gradient(125deg,#13283b,#102232)';
+                                    e.currentTarget.style.borderColor = '#1f3a53';
+                                  } else {
+                                    e.currentTarget.style.background = 'linear-gradient(125deg,#1a3a50,#152838)';
+                                  }
+                                  e.currentTarget.style.transform = 'none';
+                                }}
+                              >
+                                <p className="cg-article-title" style={{display:'flex', alignItems:'center', gap:'.4rem', justifyContent:'space-between'}}>
+                                  <span style={{display:'flex', flexDirection:'column', gap:'.2rem'}}>
+                                    <span style={{fontSize:'.62rem', fontWeight:600}}>
+                                      {clusterNames[parseInt(cluster.cluster_id)] || `Cluster #${cluster.cluster_id}`}
+                                    </span>
+                                    <span style={{fontSize:'.5rem', opacity:.6, fontWeight:400}}>ID: {cluster.cluster_id}</span>
+                                  </span>
+                                  {isSelected && <span style={{fontSize:'.5rem', background:'#43e9ff', color:'#0a1421', padding:'.15rem .35rem', borderRadius:'.35rem', fontWeight:700}}>SELECTED</span>}
+                                </p>
+                                <div className="cg-article-meta">
+                                  {typeof cluster.relevance_score === 'number' && (
+                                    <span>Relevance: {(cluster.relevance_score * 100).toFixed(1)}%</span>
+                                  )}
+                                  {Array.isArray(cluster.matched_keywords) && cluster.matched_keywords.length > 0 && (
+                                    <span>Keywords: {cluster.matched_keywords.join(', ')}</span>
+                                  )}
+                                  {cluster.total_keywords_in_cluster && (
+                                    <span>Total: {cluster.total_keywords_in_cluster}</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{marginTop:'.6rem', fontSize:'.58rem', color:'#43e9ff', fontWeight:600, letterSpacing:'.4px', display:'flex', alignItems:'center', gap:'.4rem'}}>
+                          <span style={{fontSize:'.75rem'}}>🚀</span>
+                          Auto-navigating to Cluster #{selectedCluster || msg.meta.data.recommended_clusters[0].cluster_id} • Click to change
                         </div>
                       </>
                     )}

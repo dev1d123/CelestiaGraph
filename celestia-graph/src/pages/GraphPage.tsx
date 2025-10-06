@@ -4,7 +4,7 @@ import type { UniverseRef } from '../three/Universe';
 
 import '../styles/spaceBackground.css';
 
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiService, type CombinedGroup } from '../services/ApiService';
 
@@ -62,6 +62,7 @@ const curatedFallbacks = [
 
 const GraphPage: React.FC = () => {
 	const navigate = useNavigate();
+	const [searchParams] = useSearchParams();
 	const [pendingSun, setPendingSun] = useState<{ galaxy: string; sunIndex: number; title?: string; pmcId?: string | null } | null>(null);
 	const [transitioning, setTransitioning] = useState(false);
 	const NAVBAR_HEIGHT = 56;
@@ -145,6 +146,23 @@ const GraphPage: React.FC = () => {
 		setGalaxyGroupIndex(groupIndexMap);
 		console.log('[GraphPage] Galaxy mapping (with entries):', { names, groupIndexMap });
 	}, [groups]);
+
+	// Efecto para enfocar automáticamente en un cluster desde URL
+	useEffect(() => {
+		const clusterParam = searchParams.get('cluster');
+		if (clusterParam && galaxyNames.length > 0 && universeRef.current) {
+			// El clusterParam es el cluster_id (índice), buscar el nombre de galaxia correspondiente
+			const clusterIndex = parseInt(clusterParam, 10);
+			if (!isNaN(clusterIndex) && clusterIndex >= 0 && clusterIndex < galaxyNames.length) {
+				const galaxyName = galaxyNames[clusterIndex];
+				console.log('[GraphPage] Auto-focusing cluster from chatbot:', { clusterIndex, galaxyName });
+				// Pequeño delay para asegurar que el Universe esté listo
+				setTimeout(() => {
+					universeRef.current?.focusGalaxy(galaxyName);
+				}, 500);
+			}
+		}
+	}, [searchParams, galaxyNames]);
 
 	const themes = galaxyNames;
 	const filteredThemes = themes.filter(t =>
