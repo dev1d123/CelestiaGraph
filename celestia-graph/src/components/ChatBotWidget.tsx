@@ -362,14 +362,14 @@ const ChatBotWidget: React.FC = () => {
             .filter((w: any) => typeof w === 'string')
             .map((w: string) => w.trim())
             .filter((w: string) => /^[A-Za-z]{4,}$/.test(w));
-          const unique = Array.from(new Set(base.map((w: string) => w.toLowerCase())));
+          const unique = Array.from(new Set(base.map((w: string) => w.toLowerCase()))) as string[];
           const tokens: string[] = [];
           
           if (unique.length >= 3) {
             const pool = [...unique];
             for (let i = 0; i < 3; i++) {
               const r = Math.floor(Math.random() * pool.length);
-              tokens.push(pool.splice(r, 1)[0]);
+              tokens.push(pool.splice(r, 1)[0] as string);
             }
           } else if (unique.length > 0) {
             tokens.push(...unique);

@@ -145,14 +145,14 @@ const ClassicalPage: React.FC = () => {
           if (controller.signal.aborted) return;
           try {
             const pmc = await fetchPmcIdByTitle(item.title, controller.signal);
-            let meta = null;
+            let meta: { data?: { doi?: string; citationCount?: number; influentialCitationCount?: number; openAccessPdf?: { url?: string }; journal?: { name?: string }; fieldsOfStudy?: string[] } } | null = null;
             if (pmc) {
               meta = await fetchExternalMetadataByPmc(pmc, controller.signal);
             }
             setRawResults(r => r.map(rr => rr.title === item.title ? {
               ...rr,
               pmcId: pmc,
-              doi: meta?.doi || meta?.data?.doi || null,
+              doi: meta?.data?.doi || null,
               citationCount: meta?.data?.citationCount,
               influentialCitationCount: meta?.data?.influentialCitationCount,
               pdfUrl: meta?.data?.openAccessPdf?.url || null,

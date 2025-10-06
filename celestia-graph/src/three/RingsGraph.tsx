@@ -180,7 +180,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
       roughness: 0.25
     });
     centerRef.current = new THREE.Mesh(cGeo, cMat);
-    centerRef.current.position.set(0, CENTER_Y_OFFSET);
+    centerRef.current.position.set(0, CENTER_Y_OFFSET, 0);
     groupRef.current!.add(centerRef.current);
 
     const glowTex = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAIUlEQVQoU2NkYGD4z0AEMDEwMDCqYMQEo2E0DBgGEwXRAAAJzwYqVUIOmgAAAABJRU5ErkJggg==');
@@ -369,7 +369,7 @@ const RingsGraph: React.FC<RingsGraphProps> = ({
 
           ringGroup.add(mesh);
 
-          const titleRaw = (ref.nombre || ref.title || ref.label || ref.name || '').trim() || `Article ${cursor + i + 1}`;
+          const titleRaw = (ref.nombre, '').trim() || `Article ${cursor + i + 1}`;
           nodesRef.current.push({
             id: `SIM-${cursor + i}`,
               ring: r,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, type JSX } from 'react';
 import { useCart } from '../context/CartContext'; // nuevo
 import { useNavigate } from 'react-router-dom'; // nuevo
 import { dummyArticles } from '../data/dummyArticles'; // nuevo
@@ -402,7 +402,7 @@ const GraphNavBar: React.FC = () => {
 		{ id: 3, title: 'Índice sincronizado', ts: 'hace 1h', unread: false, type: 'SYS' }
 	]));
 
-	const [results, setResults] = useState<any[]>([]); // nuevo
+	const [results, setResults] = useState<{ id: string; title: string; score: number; _hTitle: JSX.Element }[]>([]);
 	const [showResults, setShowResults] = useState(false); // nuevo
 	const [searchLoading, setSearchLoading] = useState(false); // nuevo
 	const resultsRef = useRef<HTMLDivElement | null>(null); // nuevo
@@ -559,119 +559,30 @@ const GraphNavBar: React.FC = () => {
 	const tokenize = (v: string) =>
 		v.split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
 
-	const performSearch = (advParams?: typeof adv) => {
-		setSearchLoading(true);
-		const base = dummyArticles.slice();
-		const p = advParams || { ...adv, q: search };
-		const qTokens = tokenize(p.q.toLowerCase());
-		const excTokens = tokenize(p.exclude.toLowerCase());
-		const tagsTokens = tokenize(p.tags.toLowerCase());
-		const logicAnd = p.logic === 'AND';
-
-		let filtered = base.filter(a => {
-			const haystack = (a.title + ' ' + a.abstract + ' ' + a.tags.join(' ')).toLowerCase();
-
-			// q tokens
-			if (qTokens.length) {
-				const matchTokens = qTokens.map(t => haystack.includes(t));
-				if (logicAnd && matchTokens.some(m => !m)) return false;
-				if (!logicAnd && matchTokens.every(m => !m)) return false;
-			}
-
-			// exact phrase
-			if (p.exact.trim()) {
-				if (!haystack.includes(p.exact.toLowerCase())) return false;
-			}
-
-			// exclude
-			if (excTokens.some(t => t && haystack.includes(t))) return false;
-
-			// author
-			if (p.author.trim()) {
-				const auth = p.author.toLowerCase();
-				if (!a.authors.some(au => au.toLowerCase().includes(auth))) return false;
-			}
-
-			// tags
-			if (tagsTokens.length) {
-				const lowerTags = a.tags.map(t => t.toLowerCase());
-				const all = tagsTokens.every(tt => lowerTags.includes(tt));
-				if (!all) return false;
-			}
-
-			// height
-			if (p.minHeight && a.height < Number(p.minHeight)) return false;
-			if (p.maxHeight && a.height > Number(p.maxHeight)) return false;
-
-			// date range
-			if (p.dateFrom && a.date < p.dateFrom) return false;
-			if (p.dateTo && a.date > p.dateTo) return false;
-
-			return true;
-		});
-
-		// orden preferente: citas desc, año desc
-		filtered.sort((a, b) => b.citations - a.citations || b.year - a.year);
-
-		// limitar
-		const limit = parseInt(p.limit, 10) || 50;
-		filtered = filtered.slice(0, limit);
-
-		// map render meta/hits
-		const termsForHighlight = [...qTokens];
-		if (p.exact) termsForHighlight.push(p.exact);
-		const mapped = filtered.map(f => ({
-			...f,
-			_hTitle: highlight(f.title, termsForHighlight),
-			_hAbstract: highlight(f.abstract, termsForHighlight)
-		}));
-
-		setTimeout(() => {
-			setResults(mapped);
-			setShowResults(true);
-			setSearchLoading(false);
-		}, 250 + Math.random()*250); // delay simulado
-	};
-
-	// quick submit
 	const submitQuick = async (e: React.FormEvent) => {
 		e.preventDefault();
 		const q = search.trim();
 		if (!q) return;
-		
 		setSearchLoading(true);
 		setShowResults(true);
-		
 		try {
 			const hits = await fetchRemoteSearch(q);
-			// Mapear hits de la API al formato esperado por el panel
-			const mapped = hits.map(hit => ({
-				id: hit.id || hit.pmc_id,
+			const terms = tokenize(q.toLowerCase());
+			const mapped = hits.map((hit, i) => ({
+				id: `r-${i}`,
 				title: hit.title,
-				abstract: hit.abstract || '',
-				authors: hit.authors || [],
-				year: hit.year || 0,
-				citations: hit.citations || 0,
-				tags: hit.tags || [],
-				height: 0,
-				date: '',
-				_hTitle: hit.title,
-				_hAbstract: hit.abstract || ''
+				score: hit.score,
+				_hTitle: <>{highlight(hit.title, terms)}</>
 			}));
 			setResults(mapped);
 		} catch (err) {
-			console.error('[GraphNavBar] Search error:', err);
+			console.error('[GraphNavBar] Remote search error:', err);
 			setResults([]);
 		} finally {
 			setSearchLoading(false);
 		}
 	};
 
-	// override advanced apply
-	const applyAdvanced = () => {
-		performSearch(adv);
-		setShowAdv(false);
-	};
 
 	// cerrar resultados al click fuera
 	useEffect(() => {
@@ -785,16 +696,16 @@ const GraphNavBar: React.FC = () => {
 						<div className="gs-controls">
 							<small>
 								{searchLoading
-									? 'Buscando...'
+									? 'Searching...'
 									: results.length
-										? `${results.length} resultados (dummy)`
-										: 'Sin resultados'}
+										? `${results.length} results`
+										: 'No results'}
 							</small>
 							<div style={{display:'flex', gap:'.4rem'}}>
 								<button
 									className="gs-close-btn"
 									onClick={() => setShowResults(false)}
-								>Cerrar</button>
+								>Close</button>
 								<button
 									className="gs-close-btn"
 									style={{background:'#1c3145'}}
@@ -806,25 +717,13 @@ const GraphNavBar: React.FC = () => {
 							</div>
 						</div>
 						{!results.length && !searchLoading && (
-							<div className="gs-empty">Intenta ajustar términos o abrir la búsqueda avanzada.</div>
+							<div className="gs-empty">Try another query.</div>
 						)}
 						{results.map(r => (
 							<article key={r.id} className="gs-result">
-								<a href="#" className="gs-title">{r._hTitle}</a>
-								<div className="gs-authors">
-									{r.authors.join(', ')} — {r.venue} ({r.year})
-								</div>
+								<div className="gs-title">{r._hTitle}</div>
 								<div className="gs-meta">
-									<span className="gs-badge gs-cite">Citas: {r.citations}</span>
-									<span className="gs-badge">Altura {r.height}</span>
-									<span className="gs-badge">Fecha {r.date}</span>
-									{r.tags.slice(0,4).map(t => <span key={t} className="gs-badge">{t}</span>)}
-								</div>
-								<div className="gs-abstract">
-									{r._hAbstract}{' '}
-									<span style={{opacity:.45}}>
-										{adv.includeMeta ? ` [meta:${r.id}]` : ''}
-									</span>
+									<span className="gs-badge">Score {r.score.toFixed(3)}</span>
 								</div>
 							</article>
 						))}

@@ -192,7 +192,7 @@ const GraphSunPage: React.FC = () => {
 				label: title,
 				title,
 				pmcId: null,
-				autores: [],
+				autores: [], // Ensure autores is always defined as an empty array
 				fecha: null
 			}));
 		} else {
@@ -243,35 +243,6 @@ const GraphSunPage: React.FC = () => {
 	const abstractText = (metadata?.abstract || []).join('\n\n');
 	const bigramsForCluster = clusterNumber != null ? bigramMap[String(clusterNumber)] : undefined;
 
-	const handleAdd = () => {
-		// Build stable id (prefer pmcId)
-		const generatedId = pmcId || metadata?.id || `${Date.now()}`;
-		const name =
-			articleTitle?.trim() ||
-			metadata?.title?.trim() ||
-			sun ||
-			'Untitled Article';
-		const date = formattedDate || (metadata?.date || '').trim() || new Date().toISOString().split('T')[0];
-		const keywordsStr = (keywords && keywords.length) ? keywords.join(', ') : '—';
-		const authorsStr = authorsList.length ? authorsList.join(', ') : 'Unknown';
-		const abstractStr = abstractText.trim() || 'No abstract available.';
-		const link = pmcId
-			? `https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId.startsWith('PMC') ? pmcId : 'PMC'+pmcId}`
-			: (metadata?.doi ? `https://doi.org/${metadata.doi}` : '#');
-
-		addItem({
-			id: generatedId,
-			name,
-			date,
-			keywords: keywordsStr,
-			authors: authorsStr,
-			abstract: abstractStr,
-			link
-		});
-		setJustAdded(true);
-		setTimeout(()=>setJustAdded(false), 1800);
-	};
-
 	// NUEVO: handlers claros y excluyentes
 	const activateReference = () => {
 		if (!showRef) {
@@ -311,7 +282,7 @@ const GraphSunPage: React.FC = () => {
 					centerLabel={articleTitle || sun} // usar título si existe
 					depth={depth}
 					mode={showRef ? 'reference' : 'similar'}
-					references={referenceNodes}  // FIX: now passing structured objects
+					references={referenceNodes.map(node => ({ ...node, autores: node.autores || [] }))}  // Ensure autores is always an array
 				/>
 
 				{/* Toast / mensajes centrados arriba (fuera de HUD laterales) */}
@@ -574,7 +545,6 @@ const GraphSunPage: React.FC = () => {
 						</div>
 					</div>
 					<button
-						onClick={handleAdd}
 						style={{
 							background:'linear-gradient(115deg,#43e9ff 0%,#ff3fb4 50%,#ffb347 100%)',
 							border:'1px solid #4ad4ff',
