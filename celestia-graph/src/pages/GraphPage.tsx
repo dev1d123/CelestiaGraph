@@ -282,10 +282,10 @@ const GraphPage: React.FC = () => {
 								gap:'.45rem'
 							}}>
 									{loadingData && !themes.length && (
-										<li style={{ fontSize: '.65rem', color: '#ccc' }}>Cargando galaxias...</li>
+										<li style={{ fontSize: '.65rem', color: '#ccc' }}>Loading clusters...</li>
 									)}
 									{!loadingData && !filteredThemes.length && (
-										<li style={{ fontSize: '.6rem', color:'#8896ab' }}>Sin coincidencias</li>
+										<li style={{ fontSize: '.6rem', color:'#8896ab' }}>No matches</li>
 									)}
 									{!loadingData && filteredThemes.map(t => (
 										<li key={t} style={{

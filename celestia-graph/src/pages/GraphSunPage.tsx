@@ -4,7 +4,7 @@ import RingsGraph from '../three/RingsGraph';
 import MiniChart3D from '../three/MiniChart3D';
 import { useCart } from '../context/CartContext';
 import '../styles/spaceBackground.css';
-import { fetchKeywordsById, fetchMetadataById, fetchClusterNumber, fetchBigramKeywords } from '../services/ApiService';
+import { fetchKeywordsById, fetchMetadataById, fetchClusterNumber, fetchBigramKeywords, fetchReferencesById, fetchClusterArticles } from '../services/ApiService';
 
 // Tipo para las referencias que se enviarán al grafo
 type ReferenceNode = {
@@ -34,12 +34,13 @@ const GraphSunPage: React.FC = () => {
 	const [navOffset, setNavOffset] = useState(106); // fallback (56+50)
 	const [similarMode, setSimilarMode] = useState(false); // nuevo: activa slider
 	const [showRef, setShowRef] = useState(true); // referencia activa por defecto
-	const [references, setReferences] = useState<ReferenceNode[]>([]);
 	const [keywords, setKeywords] = useState<string[]>([]);
 	const [metadata, setMetadata] = useState<import('../services/ApiService').ArticleMetadata | null>(null);
 	const [clusterNumber, setClusterNumber] = useState<number | null>(null);
 	const [bigramMap, setBigramMap] = useState<Record<string, string[]>>({});
 	const [loadingMeta, setLoadingMeta] = useState(false);
+	const [referenceTitles, setReferenceTitles] = useState<string[]>([]);
+	const [similarArticlesMap, setSimilarArticlesMap] = useState<Record<string, { title: string; id: string | null }[]>>({});
 
 	useEffect(() => {
 		const calc = () => {
@@ -77,11 +78,6 @@ const GraphSunPage: React.FC = () => {
 			document.body.style.overflow = prevBodyOverflow;
 			document.documentElement.style.overflow = prevHtmlOverflow;
 		};
-	}, []);
-
-	// Referencias quedan vacías hasta que se integre un fetch real por PMC:
-	useEffect(() => {
-		setReferences([]); // placeholder
 	}, []);
 
 	// Log PMC con formato requerido
@@ -125,6 +121,46 @@ const GraphSunPage: React.FC = () => {
 
 		return () => { aborted = true; controller.abort(); };
 	}, [pmcId]);
+
+	// Load references & similarity sources
+	useEffect(() => {
+		let aborted = false;
+		if (!pmcId) { setReferenceTitles([]); return; }
+		const controller = new AbortController();
+		fetchReferencesById(pmcId, controller.signal)
+			.then(refs => { if (!aborted) setReferenceTitles(refs); })
+			.catch(e => console.warn('[GraphSunPage] references error', e));
+
+		// load cluster articles once
+		if (!Object.keys(similarArticlesMap).length) {
+			fetchClusterArticles(controller.signal)
+				.then(map => { if (!aborted) setSimilarArticlesMap(map); })
+				.catch(e => console.warn('[GraphSunPage] cluster articles error', e));
+		}
+		return () => { aborted = true; controller.abort(); };
+	}, [pmcId]);
+
+	// Build node lists for RingsGraph depending on mode
+	const displayNodes = useMemo(() => {
+		if (showRef) return referenceTitles;
+		if (clusterNumber == null) return [];
+		const clusterArr = similarArticlesMap[String(clusterNumber)] || [];
+		return clusterArr
+			.map(a => a.title)
+			.filter(t => t && t !== articleTitle);
+	}, [showRef, referenceTitles, clusterNumber, similarArticlesMap, articleTitle]);
+
+	// Map displayNodes (array of titles) into ReferenceNode[] expected by RingsGraph
+	const referenceNodes: ReferenceNode[] = useMemo(
+		() =>
+			displayNodes.map((title, i) => ({
+				id: `ref-${showRef ? 'ref' : 'sim'}-${i}`,
+				nombre: title,
+				autores: [],          // unknown authors from external source -> empty array
+				fecha: null           // no date available
+			})),
+		[displayNodes, showRef]
+	);
 
 	const formattedDate = React.useMemo(() => {
 		if (!metadata?.date) return '';
@@ -200,7 +236,7 @@ const GraphSunPage: React.FC = () => {
 					centerLabel={articleTitle || sun} // usar título si existe
 					depth={depth}
 					mode={showRef ? 'reference' : 'similar'}
-					references={references} // NUEVO
+					references={referenceNodes}  // FIX: now passing structured objects
 				/>
 
 				{/* Toast / mensajes centrados arriba (fuera de HUD laterales) */}
@@ -223,12 +259,12 @@ const GraphSunPage: React.FC = () => {
 					)}
 					{showRef && (
 						<div style={toastStyle('#ffb347','#211405')}>
-							Modo referencia activo
+							References mode
 						</div>
 					)}
-					{similarMode && (
+					{!showRef && (
 						<div style={toastStyle('#ff3fb4','#2a0f23')}>
-							Modo similares (usa el control de profundidad)
+							Similar mode
 						</div>
 					)}
 				</div>
@@ -293,7 +329,7 @@ const GraphSunPage: React.FC = () => {
 						</div>
 					</div>
 					<div style={{fontSize:'.6rem',lineHeight:1.4,color:'#d1e2ff',letterSpacing:'.4px'}}>
-						Frases clave (bigrams) representativas del cluster asignado al artículo.
+						Key representative bigram phrases for this cluster.
 					</div>
 					<button onClick={() => navigate(-1)} style={{
 						marginTop:'auto',
@@ -306,7 +342,7 @@ const GraphSunPage: React.FC = () => {
 						letterSpacing:'.5px',
 						cursor:'pointer',
 						boxShadow:'0 4px 18px -6px rgba(0,0,0,.6)'
-					}}>Regresar</button>
+					}}>Back</button>
 				</div>
 
 				{/* HUD Derecha (info) */}
@@ -328,7 +364,7 @@ const GraphSunPage: React.FC = () => {
 						scrollbarWidth:'thin',
 					zIndex:15
 				}}>
-					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Artículo</h3>
+					<h3 style={{margin:0, fontSize:'.75rem', letterSpacing:'.55px', fontWeight:600, color:'#ffcf7b'}}>Article</h3>
 					<div style={{
 						flex:1,
 						display:'flex',
@@ -337,10 +373,10 @@ const GraphSunPage: React.FC = () => {
 						overflow:'hidden'
 					}}>
 						<div style={{fontSize:'.63rem',letterSpacing:'.4px',lineHeight:1.4,color:'#ffdca3'}}>
-							<strong style={{color:'#ffd28a'}}>Nombre:</strong><br/>{articleTitle || '(sin título)'}
+							<strong style={{color:'#ffd28a'}}>Name:</strong><br/>{articleTitle || '(untitled)'}
 						</div>
 						<div style={{fontSize:'.6rem',letterSpacing:'.4px',color:'#e6f1ff'}}>
-							<strong style={{color:'#ffd28a'}}>Fecha:</strong> {formattedDate || '—'}
+							<strong style={{color:'#ffd28a'}}>Date:</strong> {formattedDate || '—'}
 						</div>
 						<div style={{
 							flex:'1 1 auto',
@@ -371,7 +407,7 @@ const GraphSunPage: React.FC = () => {
 							</div>
 						</div>
 						<div style={{fontSize:'.6rem',letterSpacing:'.4px'}}>
-							<div style={{color:'#ffd28a', marginBottom:'.25rem'}}>Autores:</div>
+							<div style={{color:'#ffd28a', marginBottom:'.25rem'}}>Authors:</div>
 							<div style={{
 								maxHeight:'140px',          // aumentado
 								overflowY:'auto',
@@ -446,7 +482,7 @@ const GraphSunPage: React.FC = () => {
 							</div>
 						</div>
 						<div style={{fontSize:'.6rem',letterSpacing:'.4px',color:'#e6f1ff'}}>
-							<strong style={{color:'#ffd28a'}}>Número del cluster:</strong> {clusterNumber != null ? clusterNumber : (loadingMeta ? '...' : '—')}
+							<strong style={{color:'#ffd28a'}}>Cluster number:</strong> {clusterNumber != null ? clusterNumber : (loadingMeta ? '...' : '—')}
 						</div>
 						<div style={{
 							marginTop:'auto',
@@ -511,41 +547,14 @@ const GraphSunPage: React.FC = () => {
 						onClick={activateReference}
 						style={miniBtn(showRef ? '#ffb347' : '#43e9ff')}
 					>
-						{showRef ? 'Referencia activa' : 'Ver referencia'}
+						{showRef ? 'References' : 'Show references'}
 					</button>
 					<button
 						onClick={activateSimilar}
-						style={miniBtn(similarMode ? '#ff3fb4' : '#7dff8c')}
+						style={miniBtn(!showRef ? '#ff3fb4' : '#7dff8c')}
 					>
-						{similarMode ? 'Similares activos' : 'Mostrar similares'}
+						{!showRef ? 'Similar' : 'Show similar'}
 					</button>
-					<div style={{display:'flex', alignItems:'center', gap:'.5rem'}}>
-						<div style={{fontSize:'.56rem', letterSpacing:'.5px', color: similarMode ? '#8fb6ff' : '#4c6279', fontWeight:600}}>
-							Profundidad
-						</div>
-						<input
-							type="range"
-							min={2}
-							max={6}
-							value={depth}
-							disabled={!similarMode}
-							onChange={e => setDepth(parseInt(e.target.value, 10))}
-							style={{
-								width:'150px',
-								opacity: similarMode ? 1 : .25,
-								cursor: similarMode ? 'pointer' : 'not-allowed'
-							}}
-						/>
-						<div style={{
-							fontSize:'.58rem',
-							color: similarMode ? '#ffd28a' : '#6d5f48',
-							fontWeight:600,
-							minWidth:'28px',
-							textAlign:'right'
-						}}>
-							{similarMode ? depth : '-'}
-						</div>
-					</div>
 				</div>
 			</div>
 		</div>

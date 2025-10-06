@@ -412,6 +412,52 @@ class ApiService {
       return {};
     }
   }
+
+  async getReferencesById(id: string, signal?: AbortSignal): Promise<string[]> {
+    if (!id) return [];
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/data/referencesById', {
+        params: { id }, signal
+      });
+      return Array.isArray(data) ? data.filter(t => typeof t === 'string') : [];
+    } catch (e) {
+      console.warn('[ApiService] getReferencesById error', e);
+      return [];
+    }
+  }
+
+  // Raw cluster articles for similarity (cluster/cluster)
+  async getClusterArticles(signal?: AbortSignal): Promise<Record<string, { title: string; id: string | null }[]>> {
+    try {
+      const { data } = await axios.get('https://pmb-clusterign.vercel.app/cluster/cluster', { signal });
+      if (!data || typeof data !== 'object') return {};
+      const out: Record<string, { title: string; id: string | null }[]> = {};
+      for (const [k, arr] of Object.entries<any>(data)) {
+        if (Array.isArray(arr)) {
+          out[k] = arr.map(entry => {
+            if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+              const [[title, id]] = Object.entries(entry);
+              return { title, id: id == null ? null : String(id) };
+            }
+            return null;
+          }).filter(Boolean) as { title: string; id: string | null }[];
+        }
+      }
+      return out;
+    } catch (e) {
+      console.warn('[ApiService] getClusterArticles error', e);
+      return {};
+    }
+  }
+
+  withAbort<T>(fn: (signal: AbortSignal) => Promise<T>): { promise: Promise<T>; abort: () => void } {
+    const controller = new AbortController();
+    const promise = fn(controller.signal);
+    return {
+      promise,
+      abort: () => controller.abort()
+    };
+  }
 } // cierre clase ApiService
 
 // Instancia singleton
@@ -436,3 +482,7 @@ export const fetchClusterNumber = (id: string, signal?: AbortSignal) =>
   apiService.getClusterNumber(id, signal);
 export const fetchBigramKeywords = (signal?: AbortSignal) =>
   apiService.getBigramKeywords(signal);
+export const fetchReferencesById = (id: string, signal?: AbortSignal) =>
+  apiService.getReferencesById(id, signal);
+export const fetchClusterArticles = (signal?: AbortSignal) =>
+  apiService.getClusterArticles(signal);
